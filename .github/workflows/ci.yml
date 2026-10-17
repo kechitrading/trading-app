@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.1"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint, types, import contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen
+      - name: ruff
+        run: uv run ruff check .
+      - name: ruff format
+        run: uv run ruff format --check .
+      - name: mypy (strict on core, risk, execution, audit, proposals)
+        run: uv run mypy
+      - name: import-linter (RULE-013 and module boundaries)
+        run: uv run lint-imports
+
+  test:
+    name: Tests (postgres + redis services)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:2.17.2-pg16
+        env:
+          POSTGRES_USER: aqta
+          POSTGRES_PASSWORD: aqta
+          POSTGRES_DB: aqta
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aqta -d aqta"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://aqta:aqta@localhost:5432/aqta
+      AQTA_TEST_DATABASE_URL: postgresql+asyncpg://aqta:aqta@localhost:5432/aqta_test
+      REDIS_URL: redis://localhost:6379/0
+      # CI-only throwaway values (not secrets): the app refuses to start without them.
+      API_TOKEN: ci-api-token-not-a-secret
+      APPROVAL_SECRET: ci-approval-secret-not-a-secret-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen
+      - name: Create integration test database
+        run: PGPASSWORD=aqta psql -h localhost -U aqta -d aqta -c "CREATE DATABASE aqta_test"
+      - name: Migrate and check for model/migration drift
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+      - name: pytest with coverage
+        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml
+      - name: Coverage gates (risk >= 95%, risk+execution+audit >= 90%)
+        run: |
+          uv run coverage report --include='src/aqta/risk/*' --fail-under=95
+          uv run coverage report --include='src/aqta/risk/*,src/aqta/execution/*,src/aqta/audit/*' --fail-under=90
+          uv run coverage report --fail-under=85
+      - name: Audit chain verify on the migrated DB
+        run: uv run python -m aqta.audit verify
+      - name: Boot smoke (api + worker)
+        run: |
+          uv run uvicorn aqta.api:create_app --factory --port 8000 &
+          for i in $(seq 1 30); do curl -fsS localhost:8000/health && break; sleep 1; done
+          curl -fsS localhost:8000/ready
+          timeout 60 uv run arq aqta.worker.WorkerSettings --burst
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  security:
+    name: Secret scan and dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (full history)
+        env:
+          GITLEAKS_VERSION: "8.21.2"
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks git --redact --verbose --exit-code 1 .
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --frozen
+      - name: pip-audit (locked deps, all extras)
+        run: |
+          uv export --frozen --no-hashes --all-extras --format requirements-txt -o /tmp/req.txt
+          uv run pip-audit -r /tmp/req.txt --disable-pip
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          tags: aqta:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

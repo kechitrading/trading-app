@@ -1,0 +1,15 @@
+# gitleaks config: default rules plus a narrow allowlist for fake values used by tests and CI.
+title = "AQTA gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deliberately fake credentials in tests (e.g. redaction tests) and labelled CI placeholders"
+paths = [
+  '''^tests/''',
+  '''^\.env\.example$''',
+]
+regexes = [
+  '''ci-[a-z-]*not-a-secret[0-9a-z-]*''',
+]
