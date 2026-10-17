@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments and local tooling
+.venv/
+.tools/
+.uv-cache/
+.uv-python/
+
+# Secrets: only .env.example is tracked
+.env
+.env.*
+!.env.example
+
+# Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.import_linter_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Local databases / docker volumes
+.pgdata/
+pgdata/
+redisdata/
+deploy/volumes/
+*.sqlite3
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
