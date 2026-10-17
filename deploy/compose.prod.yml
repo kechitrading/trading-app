@@ -1,0 +1,82 @@
+# Production stack on the AWS EC2 host (ap-south-1, Elastic IP registered with the broker, NFR-010).
+#
+# Secrets (NFR-008): the app containers get only SECRETS_PROVIDER=aws + AWS_SECRET_ID. At start-up
+# the settings loader reads that JSON secret from AWS Secrets Manager using the EC2 instance role
+# (no keys on disk). The Postgres container's own password is materialised by deploy.sh from
+# Secrets Manager into /run/aqta/pg_password (mode 600) and passed via POSTGRES_PASSWORD_FILE.
+# IMAGE_TAG is set by deploy.sh / rollback.sh.
+
+name: aqta
+
+x-app: &app
+  image: ghcr.io/kechitrading/trading-app:${IMAGE_TAG:?IMAGE_TAG is required}
+  environment:
+    APP_ENV: prod
+    TRADING_MODE: paper
+    SECRETS_PROVIDER: aws
+    AWS_REGION: ap-south-1
+    AWS_SECRET_ID: ${AWS_SECRET_ID:-aqta/prod}
+    LOG_JSON: "true"
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: {max-size: "20m", max-file: "10"}
+
+services:
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: aqta
+      POSTGRES_DB: aqta
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      TZ: UTC
+    volumes:
+      - /var/lib/aqta/pgdata:/var/lib/postgresql/data
+      - /run/aqta/pg_password:/run/secrets/pg_password:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqta -d aqta"]
+      interval: 10s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [/var/lib/aqta/redis:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    healthcheck: {disable: true}
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *app
+    # Only nginx on the host talks to the API (TLS + IP allowlist, see deploy/nginx/).
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  worker:
+    <<: *app
+    command: ["arq", "aqta.worker.WorkerSettings"]
+    healthcheck:
+      test: ["CMD", "arq", "--check", "aqta.worker.WorkerSettings"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}

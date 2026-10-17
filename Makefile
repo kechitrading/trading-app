@@ -14,8 +14,12 @@ install: ## Install deps (incl. dev group) and pre-commit hooks
 
 .PHONY: dev
 dev: ## Start api, worker, postgres(timescale), redis via docker compose (runs migrations)
-	@test -f .env || cp .env.example .env
+	$(UV) run python scripts/init_env.py
 	$(COMPOSE) up --build
+
+.PHONY: env
+env: ## Create .env from .env.example with random dev secrets (never overwrites)
+	$(UV) run python scripts/init_env.py
 
 .PHONY: down
 down: ## Stop the local stack

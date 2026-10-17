@@ -1,0 +1,39 @@
+# Example nginx site for the AQTA API on the EC2 host. TLS via certbot; access restricted (NFR-009).
+# Copy to /etc/nginx/sites-available/aqta, adjust server_name and the allow list, then enable.
+
+limit_req_zone $binary_remote_addr zone=aqta_api:10m rate=10r/s;
+
+server {
+    listen 80;
+    server_name aqta.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name aqta.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/aqta.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aqta.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # Only Kashyap's devices / VPN egress. Replace with real addresses.
+    allow 203.0.113.10;
+    deny all;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+
+    client_max_body_size 1m;
+
+    location / {
+        limit_req zone=aqta_api burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-ID $request_id;
+        proxy_read_timeout 30s;
+    }
+}
