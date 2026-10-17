@@ -26,13 +26,8 @@ SessionFactory = async_sessionmaker[AsyncSession]
 
 
 def create_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
-    # UTC at the connection level: all timestamps are stored as timestamptz in UTC.
-    return create_async_engine(
-        database_url,
-        echo=echo,
-        pool_pre_ping=True,
-        connect_args={"server_settings": {"timezone": "UTC"}},
-    )
+    # All timestamps are timestamptz; asyncpg decodes them as aware UTC datetimes.
+    return create_async_engine(database_url, echo=echo, pool_pre_ping=True)
 
 
 def create_session_factory(engine: AsyncEngine) -> SessionFactory:
