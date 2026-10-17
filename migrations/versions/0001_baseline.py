@@ -285,7 +285,11 @@ def upgrade() -> None:
         BEGIN
             IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb') THEN
                 CREATE EXTENSION IF NOT EXISTS timescaledb;
-                PERFORM create_hypertable('market_ticks', 'time', if_not_exists => TRUE);
+                -- The PK (time, symbol, exchange) already indexes time; skip Timescale's
+                -- default market_ticks_time_idx so models and schema stay in sync (alembic check).
+                PERFORM create_hypertable(
+                    'market_ticks', 'time', if_not_exists => TRUE, create_default_indexes => FALSE
+                );
             ELSE
                 RAISE NOTICE 'timescaledb not available: market_ticks stays a plain table';
             END IF;
