@@ -185,9 +185,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False),
         sa.Column("rule_set", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("loss_cap_inr", MONEY),
-        sa.Column(
-            "undefined_risk_approved", sa.Boolean, nullable=False, server_default=sa.false()
-        ),
+        sa.Column("undefined_risk_approved", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("evidence", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("approval", JSONB),
         sa.Column("created_at", TZ, nullable=False),
@@ -221,9 +219,7 @@ def upgrade() -> None:
             "status IN ('candidate', 'shadow', 'active', 'demoted', 'retired')",
             name="status",
         ),
-        sa.CheckConstraint(
-            "status = 'active' OR weight = 0", name="weight_zero_unless_active"
-        ),
+        sa.CheckConstraint("status = 'active' OR weight = 0", name="weight_zero_unless_active"),
         sa.CheckConstraint(
             "weight = 0 OR approved_at IS NOT NULL",
             name="weight_needs_approval",

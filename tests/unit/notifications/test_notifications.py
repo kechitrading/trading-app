@@ -29,9 +29,16 @@ AT = datetime(2026, 10, 20, 4, 30, tzinfo=UTC)
 
 def event(**kw: Any) -> TradeEvent:
     data: dict[str, Any] = {
-        "kind": TradeEventKind.PROPOSAL, "mode": "paper", "at": AT, "proposal_id": "prop_1",
-        "symbol": "NIFTY 25000 CE", "side": "BUY", "quantity": 75, "price": Decimal("120.5"),
-        "max_loss_inr": Decimal("9037.5"), "margin_inr": Decimal("9037.5"),
+        "kind": TradeEventKind.PROPOSAL,
+        "mode": "paper",
+        "at": AT,
+        "proposal_id": "prop_1",
+        "symbol": "NIFTY 25000 CE",
+        "side": "BUY",
+        "quantity": 75,
+        "price": Decimal("120.5"),
+        "max_loss_inr": Decimal("9037.5"),
+        "margin_inr": Decimal("9037.5"),
         "valid_until": AT + timedelta(minutes=5),
     }
     data.update(kw)
@@ -45,8 +52,16 @@ def test_summary_contents_and_mode_label() -> None:
     assert "max loss Rs 9,038" in text
     assert "valid until 10:05 IST" in text
     assert "Proposal only" in text
-    fill = format_summary(event(kind=TradeEventKind.EXIT, mode="live", pnl_inr=Decimal("-1500"),
-                                max_loss_inr=None, margin_inr=None, valid_until=None))
+    fill = format_summary(
+        event(
+            kind=TradeEventKind.EXIT,
+            mode="live",
+            pnl_inr=Decimal("-1500"),
+            max_loss_inr=None,
+            margin_inr=None,
+            valid_until=None,
+        )
+    )
     assert fill.startswith("[LIVE] EXIT") and "P&L Rs -1,500" in fill
     assert "Proposal only" not in fill
 
@@ -85,8 +100,14 @@ async def test_build_notifier_falls_back_to_fake(settings: Settings) -> None:
     assert isinstance(notifier, FakeNotifier)
     await notifier.send(Notification("hello"))
     assert notifier.sent[0].text == "hello"
-    real = build_notifier(settings.model_copy(update={
-        "telegram_bot_token": SecretStr("123456:" + "A" * 35), "telegram_allowed_user_id": 42}))
+    real = build_notifier(
+        settings.model_copy(
+            update={
+                "telegram_bot_token": SecretStr("123456:" + "A" * 35),
+                "telegram_allowed_user_id": 42,
+            }
+        )
+    )
     assert isinstance(real, TelegramNotifier)
     assert build_dispatcher(settings) is not None
 

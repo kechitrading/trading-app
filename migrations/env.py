@@ -34,7 +34,9 @@ def _url() -> str:
     return x_args.get("url") or get_settings().database_url.get_secret_value()
 
 
-def _include_object(obj: Any, name: str | None, type_: str, reflected: bool, compare_to: Any) -> bool:
+def _include_object(
+    obj: Any, name: str | None, type_: str, reflected: bool, compare_to: Any
+) -> bool:
     # Timescale creates internal objects; never let autogenerate try to drop them.
     return not (type_ == "table" and reflected and compare_to is None)
 

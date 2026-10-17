@@ -75,7 +75,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S105", "S106", "S311", "DTZ001"]
+"tests/**" = ["S105", "S106", "S311", "DTZ001", "PT018"]
 "migrations/**" = ["E501"]
 
 [tool.ruff.lint.isort]
@@ -115,7 +115,10 @@ markers = [
     "integration: needs a real PostgreSQL (AQTA_TEST_DATABASE_URL); skipped otherwise",
     "smoke: end-to-end smoke tests",
 ]
-filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
+filterwarnings = [
+    "error::pytest.PytestUnraisableExceptionWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
 
 [tool.coverage.run]
 source = ["aqta"]

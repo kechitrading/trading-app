@@ -87,11 +87,17 @@ class PaperBroker(BrokerPort):
         lots_to_fill = int(order.lots * self._fill_ratio)
         qty = lots_to_fill * order.instrument.lot_size
         price = self._slippage.fill_price(order, base)
-        status = BrokerOrderStatus.COMPLETE if qty == order.quantity else (
-            BrokerOrderStatus.PARTIAL if qty > 0 else BrokerOrderStatus.OPEN
+        status = (
+            BrokerOrderStatus.COMPLETE
+            if qty == order.quantity
+            else (BrokerOrderStatus.PARTIAL if qty > 0 else BrokerOrderStatus.OPEN)
         )
         paper = _PaperOrder(
-            order, algo_tag, status, filled=qty, avg_price=price if qty else None,
+            order,
+            algo_tag,
+            status,
+            filled=qty,
+            avg_price=price if qty else None,
             costs=self._costs.costs(order, qty, price) if qty else Decimal(0),
         )
         self._orders[broker_id] = paper
@@ -121,7 +127,10 @@ class PaperBroker(BrokerPort):
         return False
 
     async def modify_order(
-        self, broker_order_id: str, *, limit_price: Decimal | None = None,
+        self,
+        broker_order_id: str,
+        *,
+        limit_price: Decimal | None = None,
         quantity: int | None = None,
     ) -> bool:
         p = self._get(broker_order_id)

@@ -32,9 +32,7 @@ def to_jsonable(value: Any) -> Any:
 
 
 def canonical_json(value: Any) -> str:
-    return json.dumps(
-        to_jsonable(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    return json.dumps(to_jsonable(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def sha256_hex(data: str | bytes) -> str:

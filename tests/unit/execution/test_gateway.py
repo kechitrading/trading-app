@@ -4,7 +4,6 @@ import asyncio
 from decimal import Decimal
 
 import pytest
-from factories import RiskRig, make_order
 from pydantic import SecretStr
 
 from aqta.core.clock import FrozenClock
@@ -22,13 +21,19 @@ from aqta.execution import (
     select_broker,
 )
 from aqta.proposals import ApprovalTokenService, InMemoryNonceStore
+from factories import RiskRig, make_order
 
 SECRET = "gateway-test-secret-0123456789abcdef"
 
 
 class Rig(RiskRig):
-    def __init__(self, clock: FrozenClock, settings: Settings, broker: PaperBroker | None = None,
-                 timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        clock: FrozenClock,
+        settings: Settings,
+        broker: PaperBroker | None = None,
+        timeout: float = 5.0,
+    ) -> None:
         super().__init__(clock)
         self.broker = broker or PaperBroker()
         self.tokens = ApprovalTokenService(SECRET, clock, InMemoryNonceStore())
@@ -192,11 +197,14 @@ async def test_broker_error_and_rejection(clock: FrozenClock, settings: Settings
 
     rig2 = Rig(clock, settings)
     market = make_order(order_type=OrderType.MARKET, limit_price=None)
+
     # Paper broker cannot fill without any price; bypass risk band check by giving a reference
     # price to risk, then drop it for the broker via a custom subclass.
     class _NoPrice(PaperBroker):
         async def place_order(self, o: OrderRequest, algo_tag: str) -> BrokerAck:
-            return await super().place_order(o.model_copy(update={"reference_price": None}), algo_tag)
+            return await super().place_order(
+                o.model_copy(update={"reference_price": None}), algo_tag
+            )
 
     rig3 = Rig(clock, settings, broker=_NoPrice())
     res3 = await rig3.gateway.submit_order(market, rig3.approve(market))

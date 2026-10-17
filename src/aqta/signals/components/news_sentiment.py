@@ -1,4 +1,6 @@
-"""News and speech sentiment per market/sector/instrument with confidence and source links (FR-003, FR-006).
+"""News and speech sentiment per market/sector/instrument, with confidence and source links.
+
+BRD: FR-003, FR-006.
 
 Stub: returns a neutral reading. TODO: implement in the feature ticket for this component.
 """

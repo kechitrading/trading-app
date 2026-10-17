@@ -1,4 +1,4 @@
-"""Infrastructure adapters for risk: Redis kill-switch store, SQL kill-switch store and event sink."""
+"""Risk infrastructure adapters: Redis/SQL kill-switch stores and the SQL risk-event sink."""
 
 from __future__ import annotations
 

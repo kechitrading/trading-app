@@ -14,6 +14,10 @@ class StubComponent:
 
     async def compute(self, symbol: str, at: datetime) -> ComponentValue:
         return ComponentValue(
-            component=self.name, family=self.family, value=0.0, confidence=0.0, as_of=at,
+            component=self.name,
+            family=self.family,
+            value=0.0,
+            confidence=0.0,
+            as_of=at,
             evidence=(f"stub:{self.name}",),
         )

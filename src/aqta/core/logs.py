@@ -52,9 +52,7 @@ def redact_secrets(
 
 
 def configure_logging(level: str = "INFO", *, json: bool = True) -> None:
-    renderer: Any = (
-        structlog.processors.JSONRenderer() if json else structlog.dev.ConsoleRenderer()
-    )
+    renderer: Any = structlog.processors.JSONRenderer() if json else structlog.dev.ConsoleRenderer()
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

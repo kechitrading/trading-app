@@ -34,20 +34,39 @@ def _spec(name: str):  # type: ignore[no-untyped-def]
     ("name", "after", "expected"),
     [
         # Friday 23:50 IST -> next pre-market brief is Monday 08:30 IST.
-        ("pre_market_brief", datetime(2026, 10, 23, 23, 50, tzinfo=IST),
-         datetime(2026, 10, 26, 8, 30, tzinfo=IST)),
-        ("mcx_wrap", datetime(2026, 10, 20, 12, 0, tzinfo=IST),
-         datetime(2026, 10, 20, 23, 45, tzinfo=IST)),
-        ("monthly_astrology_study", datetime(2026, 10, 20, 12, 0, tzinfo=IST),
-         datetime(2026, 11, 1, 6, 0, tzinfo=IST)),
-        ("weekly_learning_proposal", datetime(2026, 10, 20, 12, 0, tzinfo=IST),
-         datetime(2026, 10, 24, 10, 0, tzinfo=IST)),
+        (
+            "pre_market_brief",
+            datetime(2026, 10, 23, 23, 50, tzinfo=IST),
+            datetime(2026, 10, 26, 8, 30, tzinfo=IST),
+        ),
+        (
+            "mcx_wrap",
+            datetime(2026, 10, 20, 12, 0, tzinfo=IST),
+            datetime(2026, 10, 20, 23, 45, tzinfo=IST),
+        ),
+        (
+            "monthly_astrology_study",
+            datetime(2026, 10, 20, 12, 0, tzinfo=IST),
+            datetime(2026, 11, 1, 6, 0, tzinfo=IST),
+        ),
+        (
+            "weekly_learning_proposal",
+            datetime(2026, 10, 20, 12, 0, tzinfo=IST),
+            datetime(2026, 10, 24, 10, 0, tzinfo=IST),
+        ),
     ],
 )
 def test_next_run(name: str, after: datetime, expected: datetime) -> None:
     spec = _spec(name)
-    nxt = next_cron(after, weekday=spec.weekday, day=spec.day, hour=spec.hour,
-                    minute=spec.minute, second=0, microsecond=0)
+    nxt = next_cron(
+        after,
+        weekday=spec.weekday,
+        day=spec.day,
+        hour=spec.hour,
+        minute=spec.minute,
+        second=0,
+        microsecond=0,
+    )
     assert nxt == expected
 
 

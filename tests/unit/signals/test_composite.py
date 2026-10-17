@@ -31,8 +31,13 @@ from aqta.signals import (
 NOW = datetime(2026, 10, 20, 4, 30, tzinfo=UTC)
 F = ComponentFamily
 PASSING_GATE = GateResult(
-    hypotheses_tried=40, fdr_significant=True, oos_events=35, oos_net_edge_positive=True,
-    oos_hit_rate=0.62, beats_baseline=True, beats_shuffled_controls=True,
+    hypotheses_tried=40,
+    fdr_significant=True,
+    oos_events=35,
+    oos_net_edge_positive=True,
+    oos_hit_rate=0.62,
+    beats_baseline=True,
+    beats_shuffled_controls=True,
 )
 
 
@@ -55,8 +60,12 @@ GREEDY = WeightSet(version="t1", weights={f.value: 0.5 for f in F})  # asks for 
 
 
 def rule(status: RuleStatus = RuleStatus.SHADOW, **kw: object) -> AstrologyRule:
-    data: dict[str, object] = {"id": "r1", "family": RuleFamily.MUNDANE, "origin": RuleOrigin.SEED,
-                               "status": status}
+    data: dict[str, object] = {
+        "id": "r1",
+        "family": RuleFamily.MUNDANE,
+        "origin": RuleOrigin.SEED,
+        "status": status,
+    }
     data.update(kw)
     return AstrologyRule(**data)  # type: ignore[arg-type]
 
@@ -85,26 +94,31 @@ def test_astrology_contributes_zero_in_shadow_mode_even_if_weight_requested() ->
 
 
 @given(st.floats(min_value=-1, max_value=1), st.sampled_from(list(RuleStatus)))
-def test_property_astrology_zero_unless_active_and_approved(value: float, status: RuleStatus) -> None:
+def test_property_astrology_zero_unless_active_and_approved(
+    value: float, status: RuleStatus
+) -> None:
     cfg = AstrologySettings(shadow_mode=False)
     r = rule(status, weight=0.0, gate=PASSING_GATE)  # not approved
-    res = combine("X", NOW, [cv(F.ASTROLOGY_MUNDANE, value)], GREEDY, cfg,
-                  {F.ASTROLOGY_MUNDANE.value: r})
+    res = combine(
+        "X", NOW, [cv(F.ASTROLOGY_MUNDANE, value)], GREEDY, cfg, {F.ASTROLOGY_MUNDANE.value: r}
+    )
     assert res.contributions[0].contribution == 0.0
     assert res.score == 0.0
 
 
 def test_astrology_counts_only_when_active_gated_approved_and_global_shadow_off() -> None:
     shadow = rule(RuleStatus.SHADOW, gate=PASSING_GATE)
-    active = change_status(shadow, RuleStatus.ACTIVE, AstrologySettings(), approved_by="kashyap",
-                           at=NOW, weight=0.1)
+    active = change_status(
+        shadow, RuleStatus.ACTIVE, AstrologySettings(), approved_by="kashyap", at=NOW, weight=0.1
+    )
     assert active.approved and active.weight == 0.1
     # Global shadow switch still on -> zero.
     assert effective_weight(active, AstrologySettings()) == 0.0
     cfg = AstrologySettings(shadow_mode=False)
     assert effective_weight(active, cfg) == 0.1
-    res = combine("X", NOW, [cv(F.ASTROLOGY_MUNDANE, 1.0)], GREEDY, cfg,
-                  {F.ASTROLOGY_MUNDANE.value: active})
+    res = combine(
+        "X", NOW, [cv(F.ASTROLOGY_MUNDANE, 1.0)], GREEDY, cfg, {F.ASTROLOGY_MUNDANE.value: active}
+    )
     assert res.contributions[0].contribution == pytest.approx(0.1)
     assert not res.contributions[0].shadow
 
@@ -124,8 +138,9 @@ def test_activation_requires_gate_and_approval() -> None:
 
 def test_demotion_forces_zero_weight() -> None:
     cfg = AstrologySettings()
-    active = change_status(rule(gate=PASSING_GATE), RuleStatus.ACTIVE, cfg, approved_by="k",
-                           at=NOW, weight=0.2)
+    active = change_status(
+        rule(gate=PASSING_GATE), RuleStatus.ACTIVE, cfg, approved_by="k", at=NOW, weight=0.2
+    )
     demoted = change_status(active, RuleStatus.DEMOTED, cfg)
     assert demoted.weight == 0.0
     assert effective_weight(demoted, AstrologySettings(shadow_mode=False)) == 0.0
@@ -134,8 +149,13 @@ def test_demotion_forces_zero_weight() -> None:
 
 
 def test_degraded_component_excluded() -> None:
-    res = combine("X", NOW, [cv(F.NEWS_SENTIMENT, 1.0, degraded=True), cv(F.QUANT_TECHNICAL, 0.5)],
-                  DEFAULT_WEIGHTS, AstrologySettings())
+    res = combine(
+        "X",
+        NOW,
+        [cv(F.NEWS_SENTIMENT, 1.0, degraded=True), cv(F.QUANT_TECHNICAL, 0.5)],
+        DEFAULT_WEIGHTS,
+        AstrologySettings(),
+    )
     assert res.contributions[0].effective_weight == 0.0
     assert res.contributions[0].excluded_reason == "degraded data (FR-004)"
     assert res.score == pytest.approx(0.5)

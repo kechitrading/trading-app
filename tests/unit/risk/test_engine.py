@@ -4,12 +4,12 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
-from factories import RiskRig, make_order
 
 from aqta.core.clock import FrozenClock
 from aqta.core.settings import RiskSettings
 from aqta.core.trading import OrderType, RiskEffect, Side
 from aqta.risk import CheckName, RiskEventType
+from factories import RiskRig, make_order
 
 
 @pytest.fixture
@@ -54,8 +54,9 @@ async def test_margin_cap(rig: RiskRig) -> None:
     rig.state.update(margin_used_inr=Decimal("500000"))
     assert await _failed(rig, margin_required_inr=Decimal("100001")) == {CheckName.MARGIN_CAP}
     reducing = await rig.engine.evaluate(
-        make_order(margin_required_inr=Decimal("900000"), risk_effect=RiskEffect.REDUCING,
-                   side=Side.SELL)
+        make_order(
+            margin_required_inr=Decimal("900000"), risk_effect=RiskEffect.REDUCING, side=Side.SELL
+        )
     )
     assert reducing.approved, reducing.reasons
 
@@ -68,9 +69,7 @@ async def test_quantity_and_lots(rig: RiskRig) -> None:
 async def test_price_band(rig: RiskRig) -> None:
     assert await _failed(rig, limit_price=Decimal("26300")) == {CheckName.PRICE_BAND}
     assert await _failed(rig, reference_price=None) == {CheckName.PRICE_BAND}
-    market = await rig.engine.evaluate(
-        make_order(order_type=OrderType.MARKET, limit_price=None)
-    )
+    market = await rig.engine.evaluate(make_order(order_type=OrderType.MARKET, limit_price=None))
     assert market.approved, market.reasons
 
 
@@ -163,5 +162,7 @@ async def test_kill_switch_blocks_all(rig: RiskRig) -> None:
 
 
 def test_custom_limits(clock: FrozenClock) -> None:
-    rig = RiskRig(clock, RiskSettings(capital_inr=Decimal("500000"), max_loss_per_trade_pct=Decimal("0.5")))
+    rig = RiskRig(
+        clock, RiskSettings(capital_inr=Decimal("500000"), max_loss_per_trade_pct=Decimal("0.5"))
+    )
     assert rig.limits.max_loss_per_trade_inr == Decimal("2500")

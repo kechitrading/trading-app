@@ -1,4 +1,6 @@
-"""FII/DII/MF positioning score; lagged and estimated, never real-time holdings (FR-059, FR-060, RULE-012).
+"""FII/DII/MF positioning score: lagged and estimated, not real-time holdings.
+
+BRD: FR-059, FR-060, RULE-012.
 
 Stub: returns a neutral reading. TODO: implement in the feature ticket for this component.
 """

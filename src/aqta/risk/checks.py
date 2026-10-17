@@ -154,9 +154,7 @@ class OrderRateLimiter:
     def check(self, now: datetime) -> CheckResult:
         self._prune(now)
         if len(self._sent) >= self._max:
-            return CheckResult.fail(
-                CheckName.ORDER_RATE, f"order rate cap {self._max}/sec reached"
-            )
+            return CheckResult.fail(CheckName.ORDER_RATE, f"order rate cap {self._max}/sec reached")
         return CheckResult.ok(CheckName.ORDER_RATE)
 
     def record(self, now: datetime) -> None:
@@ -178,8 +176,13 @@ class DuplicateGuard:
     @staticmethod
     def _fingerprint(order: OrderRequest) -> Fingerprint:
         ins = order.instrument
-        return (f"{ins.exchange}:{ins.symbol}", ins.segment, order.side, order.quantity,
-                order.limit_price)
+        return (
+            f"{ins.exchange}:{ins.symbol}",
+            ins.segment,
+            order.side,
+            order.quantity,
+            order.limit_price,
+        )
 
     def _prune(self, now: datetime) -> None:
         # Client ids are kept for a day so a replayed id is caught well beyond the window.

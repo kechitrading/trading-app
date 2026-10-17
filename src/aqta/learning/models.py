@@ -27,7 +27,9 @@ class ConfigVersionRow(Base):
     __table_args__ = (
         UniqueConstraint("kind", "version", name="uq_config_versions_kind_version"),
         # At most one active version per kind; rollback re-activates an older row (FR-048).
-        Index("uq_config_versions_one_active", "kind", unique=True, postgresql_where=text("active")),
+        Index(
+            "uq_config_versions_one_active", "kind", unique=True, postgresql_where=text("active")
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)

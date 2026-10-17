@@ -35,8 +35,12 @@ class ProposalStatus(StrEnum):
 _ALLOWED: dict[ProposalStatus, frozenset[ProposalStatus]] = {
     ProposalStatus.DRAFT: frozenset({ProposalStatus.PENDING_APPROVAL, ProposalStatus.CANCELLED}),
     ProposalStatus.PENDING_APPROVAL: frozenset(
-        {ProposalStatus.APPROVED, ProposalStatus.REJECTED, ProposalStatus.EXPIRED,
-         ProposalStatus.CANCELLED}
+        {
+            ProposalStatus.APPROVED,
+            ProposalStatus.REJECTED,
+            ProposalStatus.EXPIRED,
+            ProposalStatus.CANCELLED,
+        }
     ),
     ProposalStatus.APPROVED: frozenset({ProposalStatus.EXECUTED, ProposalStatus.CANCELLED}),
     ProposalStatus.REJECTED: frozenset(),
@@ -69,7 +73,9 @@ class Proposal(BaseModel):
 
 def transition(proposal: Proposal, to: ProposalStatus) -> Proposal:
     if to not in _ALLOWED[proposal.status]:
-        raise InvalidTransitionError(f"proposal {proposal.id}: {proposal.status} -> {to} not allowed")
+        raise InvalidTransitionError(
+            f"proposal {proposal.id}: {proposal.status} -> {to} not allowed"
+        )
     return proposal.model_copy(update={"status": to})
 
 

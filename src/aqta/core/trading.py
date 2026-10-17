@@ -43,7 +43,7 @@ class ProductType(StrEnum):
 
 
 class RiskEffect(StrEnum):
-    """Whether an order increases or reduces portfolio risk (FR-032 lets reducing orders through)."""
+    """Whether an order increases or reduces risk (FR-032 keeps reducing orders allowed)."""
 
     INCREASING = "INCREASING"
     REDUCING = "REDUCING"

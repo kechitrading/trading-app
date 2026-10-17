@@ -6,13 +6,13 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from factories import RiskRig, make_order
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from aqta.core.clock import FrozenClock
 from aqta.core.trading import RiskEffect, Side
 from aqta.risk import CheckName, OrderRateLimiter, RiskSnapshot
+from factories import RiskRig, make_order
 
 START = datetime(2026, 10, 20, 4, 30, tzinfo=UTC)
 money = st.decimals(min_value=0, max_value=2_000_000, places=2, allow_nan=False)
@@ -24,18 +24,22 @@ def scenarios(draw: st.DrawFn) -> tuple[RiskSnapshot, dict[str, object]]:
     equity = draw(st.decimals(min_value=800_000, max_value=1_100_000, places=2))
     snap = RiskSnapshot(
         equity_inr=equity,
-        peak_equity_inr=max(equity, draw(st.decimals(min_value=900_000, max_value=1_100_000, places=2))),
+        peak_equity_inr=max(
+            equity, draw(st.decimals(min_value=900_000, max_value=1_100_000, places=2))
+        ),
         day_pnl_inr=draw(signed_money),
         margin_used_inr=draw(st.decimals(min_value=0, max_value=800_000, places=2)),
         open_order_count=draw(st.integers(min_value=0, max_value=25)),
     )
     ref = draw(st.decimals(min_value=100, max_value=50_000, places=2))
     order = {
-        "quantity": 75 * draw(st.integers(min_value=1, max_value=60)) + draw(st.sampled_from([0, 0, 0, 1])),
+        "quantity": 75 * draw(st.integers(min_value=1, max_value=60))
+        + draw(st.sampled_from([0, 0, 0, 1])),
         "max_loss_inr": draw(st.one_of(st.none(), money)),
         "margin_required_inr": draw(money),
         "reference_price": ref,
-        "limit_price": ref * (1 + draw(st.decimals(min_value=Decimal("-0.1"), max_value=Decimal("0.1"), places=4))),
+        "limit_price": ref
+        * (1 + draw(st.decimals(min_value=Decimal("-0.1"), max_value=Decimal("0.1"), places=4))),
         "risk_effect": draw(st.sampled_from(list(RiskEffect))),
         "side": draw(st.sampled_from(list(Side))),
     }
@@ -72,8 +76,11 @@ def test_decision_matches_oracle(scenario: tuple[RiskSnapshot, dict[str, object]
         and order.max_loss_inr <= lim.max_loss_per_trade_inr,
         CheckName.MARGIN_CAP: (not increasing)
         or snap.margin_used_inr + order.margin_required_inr <= lim.margin_cap_inr,
-        CheckName.QUANTITY_LOT: order.quantity % 75 == 0 and order.quantity // 75 <= lim.max_lots_per_order,
-        CheckName.PRICE_BAND: abs(order.limit_price - order.reference_price) / order.reference_price * 100
+        CheckName.QUANTITY_LOT: order.quantity % 75 == 0
+        and order.quantity // 75 <= lim.max_lots_per_order,
+        CheckName.PRICE_BAND: abs(order.limit_price - order.reference_price)
+        / order.reference_price
+        * 100
         <= lim.price_band_pct,
         CheckName.OPEN_ORDERS: snap.open_order_count < lim.max_open_orders,
     }

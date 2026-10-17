@@ -36,8 +36,9 @@ class FakeNotifier:
 
     async def send(self, notification: Notification) -> None:
         self.sent.append(notification)
-        log.info("notify.fake", kind=notification.kind, level=notification.level,
-                 text=notification.text)
+        log.info(
+            "notify.fake", kind=notification.kind, level=notification.level, text=notification.text
+        )
 
 
 class EmailNotifier:

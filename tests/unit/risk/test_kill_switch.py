@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import fakeredis
 import pytest
-from factories import RiskRig
 
 from aqta.core.clock import FrozenClock
 from aqta.risk import InMemoryKillSwitchStore, KillSwitch, KillSwitchState, RiskEventType
 from aqta.risk.adapters import RedisKillSwitchStore
+from factories import RiskRig
 
 
 @pytest.fixture

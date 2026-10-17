@@ -33,8 +33,14 @@ async def test_sql_risk_event_sink(
 ) -> None:
     sink = SqlRiskEventSink(session_factory)
     await sink.emit(
-        RiskEvent(clock.now(), RiskEventType.DRAWDOWN_HALT, Severity.CRITICAL, "risk", "dd",
-                  {"drawdown": "50000"})
+        RiskEvent(
+            clock.now(),
+            RiskEventType.DRAWDOWN_HALT,
+            Severity.CRITICAL,
+            "risk",
+            "dd",
+            {"drawdown": "50000"},
+        )
     )
     async with engine.connect() as conn:
         row = (await conn.execute(text("SELECT event_type, details FROM risk_events"))).one()

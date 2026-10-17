@@ -84,7 +84,9 @@ class KillSwitch:
                     reason=f"fast store read failed: {exc}; failing closed",
                 )
             )
-            return KillSwitchState(True, self._clock.now(), "system", "kill-switch store unreadable")
+            return KillSwitchState(
+                True, self._clock.now(), "system", "kill-switch store unreadable"
+            )
         if current is None and self._durable is not None:
             current = await self._durable.get()
             if current is not None:
@@ -102,8 +104,13 @@ class KillSwitch:
             "kill_switch.triggered", {"actor": actor, "reason": reason}, actor=actor
         )
         await self._events.emit(
-            RiskEvent(new.updated_at, RiskEventType.KILL_SWITCH_TRIGGERED, Severity.CRITICAL,
-                      actor, reason)
+            RiskEvent(
+                new.updated_at,
+                RiskEventType.KILL_SWITCH_TRIGGERED,
+                Severity.CRITICAL,
+                actor,
+                reason,
+            )
         )
         for callback in self._on_trigger:
             try:
@@ -121,8 +128,9 @@ class KillSwitch:
             "kill_switch.released", {"actor": actor, "reason": reason}, actor=actor
         )
         await self._events.emit(
-            RiskEvent(new.updated_at, RiskEventType.KILL_SWITCH_RELEASED, Severity.WARNING,
-                      actor, reason)
+            RiskEvent(
+                new.updated_at, RiskEventType.KILL_SWITCH_RELEASED, Severity.WARNING, actor, reason
+            )
         )
         return new
 

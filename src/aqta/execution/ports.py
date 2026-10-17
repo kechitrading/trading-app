@@ -1,4 +1,7 @@
-"""Broker port (hexagonal edge). Broker choice is open (Q-005), so nothing else knows a broker API."""
+"""Broker port (hexagonal edge).
+
+Broker choice is open (Q-005), so nothing outside an adapter knows a broker API.
+"""
 
 from __future__ import annotations
 
@@ -67,7 +70,10 @@ class BrokerPort(ABC):
 
     @abstractmethod
     async def modify_order(
-        self, broker_order_id: str, *, limit_price: Decimal | None = None,
+        self,
+        broker_order_id: str,
+        *,
+        limit_price: Decimal | None = None,
         quantity: int | None = None,
     ) -> bool: ...
 

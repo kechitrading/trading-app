@@ -32,7 +32,10 @@ class LiveBrokerStub(BrokerPort):
         raise NotImplementedError(_MSG)
 
     async def modify_order(
-        self, broker_order_id: str, *, limit_price: Decimal | None = None,
+        self,
+        broker_order_id: str,
+        *,
+        limit_price: Decimal | None = None,
         quantity: int | None = None,
     ) -> bool:
         raise NotImplementedError(_MSG)

@@ -1,6 +1,6 @@
-"""Data ingestion ports and the data-quality/staleness checker (BR-001, FR-001..FR-004, FR-057, FR-058).
+"""Data ingestion ports and the staleness checker (BR-001, FR-001..FR-004, FR-057, FR-058).
 
-Adapters (broker feed, NSE/BSE/MCX files, Finnhub, RSS) come later; nothing here makes network calls.
+Adapters (broker feed, NSE/BSE/MCX files, Finnhub, RSS) come later; no network calls here.
 """
 
 from __future__ import annotations

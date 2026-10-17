@@ -3,7 +3,6 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from factories import make_order
 
 from aqta.core.errors import InvalidTransitionError
 from aqta.core.trading import Side
@@ -19,6 +18,7 @@ from aqta.execution import (
     is_open,
     next_state,
 )
+from factories import make_order
 
 S, E = OrderState, OrderEvent
 
@@ -45,8 +45,14 @@ def test_valid_paths(path: list[OrderEvent], final: OrderState) -> None:
 
 @pytest.mark.parametrize(
     ("state", "event"),
-    [(S.NEW, E.FILL), (S.FILLED, E.CANCEL_REQUEST), (S.CANCELLED, E.ACK),
-     (S.REJECTED, E.ACK), (S.PENDING_SUBMIT, E.FILL), (S.CANCEL_PENDING, E.MODIFY_REQUEST)],
+    [
+        (S.NEW, E.FILL),
+        (S.FILLED, E.CANCEL_REQUEST),
+        (S.CANCELLED, E.ACK),
+        (S.REJECTED, E.ACK),
+        (S.PENDING_SUBMIT, E.FILL),
+        (S.CANCEL_PENDING, E.MODIFY_REQUEST),
+    ],
 )
 def test_invalid_transitions(state: OrderState, event: OrderEvent) -> None:
     with pytest.raises(InvalidTransitionError):
@@ -54,7 +60,7 @@ def test_invalid_transitions(state: OrderState, event: OrderEvent) -> None:
 
 
 def test_terminal_and_open() -> None:
-    assert TERMINAL == {S.FILLED, S.CANCELLED, S.REJECTED}
+    assert {S.FILLED, S.CANCELLED, S.REJECTED} == TERMINAL
     assert not is_open(S.NEW) and not is_open(S.FILLED)
     assert is_open(S.TIMED_OUT) and is_open(S.PARTIALLY_FILLED)
 

@@ -27,9 +27,9 @@ def test_ist_date_rolls_over_before_utc() -> None:
 
 def test_naive_datetimes_rejected() -> None:
     with pytest.raises(ValueError, match="Naive"):
-        ensure_utc(datetime(2026, 1, 1))  # noqa: DTZ001
+        ensure_utc(datetime(2026, 1, 1))
     with pytest.raises(ValueError, match="aware"):
-        FrozenClock(datetime(2026, 1, 1))  # noqa: DTZ001
+        FrozenClock(datetime(2026, 1, 1))
 
 
 def test_frozen_clock_advances_and_sets() -> None:

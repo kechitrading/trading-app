@@ -24,7 +24,8 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["engine"] = engine
     ctx["audit"] = SqlAuditLog(create_session_factory(engine))
     await ctx["audit"].record(
-        "worker.started", {"mode": settings.trading_mode.value, "jobs": [j.name for j in REGISTRY]},
+        "worker.started",
+        {"mode": settings.trading_mode.value, "jobs": [j.name for j in REGISTRY]},
         "worker",
     )
     log.info("worker.started", mode=settings.trading_mode.value)

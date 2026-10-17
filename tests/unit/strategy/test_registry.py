@@ -21,13 +21,25 @@ def reg(clock: FrozenClock) -> StrategyRegistry:
 async def _ready_for_live(reg: StrategyRegistry, clock: FrozenClock) -> str:
     s = await reg.register("iron-condor-weekly", {"entry": "IV rank > 50"}, "kashyap")
     await reg.promote(s.id, S.BACKTEST, "kashyap")
-    s = await reg.update(reg.get(s.id), "kashyap", evidence=Evidence(
-        backtest_report_id="bt-1", backtest_net_of_costs=True))
+    s = await reg.update(
+        reg.get(s.id),
+        "kashyap",
+        evidence=Evidence(backtest_report_id="bt-1", backtest_net_of_costs=True),
+    )
     await reg.promote(s.id, S.PAPER, "kashyap")
     start = clock.now()
-    await reg.update(reg.get(s.id), "kashyap", loss_cap_inr=Decimal("10000"), evidence=Evidence(
-        backtest_report_id="bt-1", backtest_net_of_costs=True, paper_started_at=start,
-        paper_ended_at=start + timedelta(days=90), paper_report_id="pp-1"))
+    await reg.update(
+        reg.get(s.id),
+        "kashyap",
+        loss_cap_inr=Decimal("10000"),
+        evidence=Evidence(
+            backtest_report_id="bt-1",
+            backtest_net_of_costs=True,
+            paper_started_at=start,
+            paper_ended_at=start + timedelta(days=90),
+            paper_report_id="pp-1",
+        ),
+    )
     return s.id
 
 

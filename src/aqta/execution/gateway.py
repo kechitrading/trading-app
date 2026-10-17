@@ -114,8 +114,12 @@ class OrderGateway:
         return [o for o in self._orders.values() if is_open(o.state)]
 
     async def submit_order(self, order: OrderRequest, approval_token: str | None) -> OrderResult:
-        base = {"client_order_id": order.client_order_id, "proposal_id": order.proposal_id,
-                "mode": self._mode.value, "broker": self._broker.name}
+        base = {
+            "client_order_id": order.client_order_id,
+            "proposal_id": order.proposal_id,
+            "mode": self._mode.value,
+            "broker": self._broker.name,
+        }
 
         algo_tag = order.algo_tag or self._default_tag
         if not algo_tag:
@@ -137,8 +141,11 @@ class OrderGateway:
         # 3. Broker port.
         managed = self._new_managed(order, algo_tag, claims)
         managed.apply(OrderEvent.SUBMIT, self._clock.now())
-        await self._audit_order("order.submitted", managed, {**base, "algo_tag": algo_tag,
-                                "approval_nonce": claims.nonce, "order": order})
+        await self._audit_order(
+            "order.submitted",
+            managed,
+            {**base, "algo_tag": algo_tag, "approval_nonce": claims.nonce, "order": order},
+        )
         try:
             ack = await asyncio.wait_for(
                 self._broker.place_order(order, algo_tag), timeout=self._timeout
@@ -146,8 +153,13 @@ class OrderGateway:
         except TimeoutError:
             managed.apply(OrderEvent.TIMEOUT, self._clock.now())
             await self._audit_order("order.timed_out", managed, base)
-            return OrderResult(False, order.client_order_id, Stage.BROKER,
-                               ("broker did not acknowledge in time",), managed)
+            return OrderResult(
+                False,
+                order.client_order_id,
+                Stage.BROKER,
+                ("broker did not acknowledge in time",),
+                managed,
+            )
         except BrokerError as exc:
             managed.apply(OrderEvent.REJECT, self._clock.now())
             await self._audit_order("order.rejected", managed, {**base, "reason": str(exc)})
@@ -202,8 +214,11 @@ class OrderGateway:
         await self._audit_order(
             f"order.{managed.state.value}",
             managed,
-            {"filled_quantity": snap.filled_quantity, "average_price": snap.average_price,
-             "costs_inr": snap.costs_inr},
+            {
+                "filled_quantity": snap.filled_quantity,
+                "average_price": snap.average_price,
+                "costs_inr": snap.costs_inr,
+            },
         )
 
     def _new_managed(
@@ -227,8 +242,12 @@ class OrderGateway:
         await self._audit.record(
             "order.rejected", {**base, "stage": stage.value, "reasons": reasons}, actor="execution"
         )
-        log.warning("execution.order_rejected", stage=stage.value, reasons=reasons,
-                    client_order_id=order.client_order_id)
+        log.warning(
+            "execution.order_rejected",
+            stage=stage.value,
+            reasons=reasons,
+            client_order_id=order.client_order_id,
+        )
         return OrderResult(False, order.client_order_id, stage, tuple(reasons))
 
     async def _audit_order(
@@ -236,7 +255,11 @@ class OrderGateway:
     ) -> None:
         await self._audit.record(
             event,
-            {"order_id": managed.id, "state": managed.state.value,
-             "broker_order_id": managed.broker_order_id, **extra},
+            {
+                "order_id": managed.id,
+                "state": managed.state.value,
+                "broker_order_id": managed.broker_order_id,
+                **extra,
+            },
             actor=actor,
         )

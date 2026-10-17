@@ -1,4 +1,7 @@
-"""Ports for the astrology research engine. Adapters (pyswisseph etc.) come later (FR-005, FR-055)."""
+"""Ports for the astrology research engine.
+
+Adapters (pyswisseph etc.) come later (FR-005, FR-055).
+"""
 
 from __future__ import annotations
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import itertools
 from decimal import Decimal
 
 import pytest
@@ -22,7 +23,7 @@ async def test_chain_links_and_verifies(clock: FrozenClock) -> None:
     log = await _log_with(5, clock)
     entries = log.entries
     assert entries[0].prev_hash == GENESIS_HASH
-    for prev, cur in zip(entries, entries[1:], strict=False):
+    for prev, cur in itertools.pairwise(entries):
         assert cur.prev_hash == prev.hash
     result = log.verify()
     assert result.ok and result.checked == 5 and result.head_hash == entries[-1].hash
@@ -57,7 +58,9 @@ async def test_rehashed_row_still_breaks_next_link(clock: FrozenClock) -> None:
     entries = (await _log_with(3, clock)).entries
     e = entries[1]
     forged = dataclasses.replace(
-        e, payload={"i": -1}, hash=compute_hash(e.prev_hash, e.occurred_at, e.event_type, e.actor, {"i": -1})
+        e,
+        payload={"i": -1},
+        hash=compute_hash(e.prev_hash, e.occurred_at, e.event_type, e.actor, {"i": -1}),
     )
     entries[1] = forged
     result = verify_chain(entries)

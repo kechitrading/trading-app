@@ -15,9 +15,7 @@ from aqta.core.db import Base
 
 class AuditLogRow(Base):
     __tablename__ = "audit_log"
-    __table_args__ = (
-        Index("ix_audit_log_event_type_occurred_at", "event_type", "occurred_at"),
-    )
+    __table_args__ = (Index("ix_audit_log_event_type_occurred_at", "event_type", "occurred_at"),)
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

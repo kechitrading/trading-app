@@ -7,7 +7,6 @@ from decimal import Decimal
 
 import fakeredis
 import pytest
-from factories import make_order
 
 from aqta.audit import InMemoryAuditLog
 from aqta.core.clock import FrozenClock
@@ -24,6 +23,7 @@ from aqta.proposals import (
     transition,
 )
 from aqta.proposals.adapters import RedisNonceStore
+from factories import make_order
 
 SECRET = "unit-test-secret-0123456789abcdef"
 
@@ -89,7 +89,9 @@ def test_token_from_other_secret_rejected(clock: FrozenClock) -> None:
     other = ApprovalTokenService("another-secret-0123456789abcdef", clock, InMemoryNonceStore())
     order = make_order()
     with pytest.raises(ApprovalTokenError) as exc:
-        ApprovalTokenService(SECRET, clock, InMemoryNonceStore()).verify(other.issue(order, "x"), order)
+        ApprovalTokenService(SECRET, clock, InMemoryNonceStore()).verify(
+            other.issue(order, "x"), order
+        )
     assert _fail(exc) is TokenFailure.BAD_SIGNATURE
 
 
@@ -197,4 +199,6 @@ async def test_reject_and_lifecycle_rules(svc: ApprovalTokenService, clock: Froz
     draft = _proposal(clock, status=ProposalStatus.DRAFT)
     with pytest.raises(InvalidTransitionError):
         transition(draft, ProposalStatus.EXECUTED)
-    assert transition(draft, ProposalStatus.PENDING_APPROVAL).status is ProposalStatus.PENDING_APPROVAL
+    assert (
+        transition(draft, ProposalStatus.PENDING_APPROVAL).status is ProposalStatus.PENDING_APPROVAL
+    )

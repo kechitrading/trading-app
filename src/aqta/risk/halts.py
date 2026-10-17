@@ -63,8 +63,9 @@ class RiskHalts:
         self._drawdown_halted = False
         await self._audit.record("risk.drawdown_reset", {"reason": reason}, actor=actor)
         await self._events.emit(
-            RiskEvent(self._clock.now(), RiskEventType.DRAWDOWN_RESET, Severity.WARNING, actor,
-                      reason)
+            RiskEvent(
+                self._clock.now(), RiskEventType.DRAWDOWN_RESET, Severity.WARNING, actor, reason
+            )
         )
 
     async def _emit(self, kind: RiskEventType, severity: Severity, reason: str) -> None:

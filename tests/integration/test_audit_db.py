@@ -76,9 +76,7 @@ async def test_verify_detects_forced_tamper(
     # Simulate a privileged attacker who bypasses the trigger (superuser/table owner).
     async with engine.begin() as conn:
         await conn.execute(text("ALTER TABLE audit_log DISABLE TRIGGER audit_log_no_update_delete"))
-        await conn.execute(
-            text("UPDATE audit_log SET payload = '{\"i\": 42}'::jsonb WHERE id = 2")
-        )
+        await conn.execute(text("UPDATE audit_log SET payload = '{\"i\": 42}'::jsonb WHERE id = 2"))
         await conn.execute(text("ALTER TABLE audit_log ENABLE TRIGGER audit_log_no_update_delete"))
 
     result = await log.verify()

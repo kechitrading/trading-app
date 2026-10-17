@@ -38,7 +38,9 @@ class BudgetAlert(BaseModel):
 class CostTracker:
     """Tracks spend per calendar month and raises each threshold alert once (80% and 100%)."""
 
-    def __init__(self, budget: str, cap_inr: Decimal, thresholds: Sequence[int] = (80, 100)) -> None:
+    def __init__(
+        self, budget: str, cap_inr: Decimal, thresholds: Sequence[int] = (80, 100)
+    ) -> None:
         self._budget = budget
         self._cap = cap_inr
         self._thresholds = sorted(thresholds)
@@ -64,8 +66,15 @@ class CostTracker:
         for pct in self._thresholds:
             if total >= self._cap * pct / 100 and (month, pct) not in self._alerted:
                 self._alerted.add((month, pct))
-                alerts.append(BudgetAlert(budget=self._budget, threshold_pct=pct, spent_inr=total,
-                                          cap_inr=self._cap, month=month))
+                alerts.append(
+                    BudgetAlert(
+                        budget=self._budget,
+                        threshold_pct=pct,
+                        spent_inr=total,
+                        cap_inr=self._cap,
+                        month=month,
+                    )
+                )
         return alerts
 
     def over_budget(self, day: date) -> bool:

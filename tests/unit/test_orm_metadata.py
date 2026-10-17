@@ -23,8 +23,17 @@ def test_models_cover_baseline_tables() -> None:
     for module in MODEL_MODULES:
         importlib.import_module(module)
     assert set(Base.metadata.tables) == {
-        "audit_log", "proposals", "approvals", "orders", "risk_events", "kill_switch_state",
-        "strategies", "astrology_rules", "forecasts", "config_versions", "market_ticks",
+        "audit_log",
+        "proposals",
+        "approvals",
+        "orders",
+        "risk_events",
+        "kill_switch_state",
+        "strategies",
+        "astrology_rules",
+        "forecasts",
+        "config_versions",
+        "market_ticks",
     }
     orders = Base.metadata.tables["orders"]
     assert orders.c.algo_tag.nullable is False  # FR-028

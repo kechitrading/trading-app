@@ -149,8 +149,12 @@ class StrategyRegistry:
         self._items[strategy_id] = promoted
         await self._audit.record(
             "strategy.status_changed",
-            {"id": strategy_id, "from": current.status.value, "to": to.value,
-             "approved_by": approval.actor if approval else None},
+            {
+                "id": strategy_id,
+                "from": current.status.value,
+                "to": to.value,
+                "approved_by": approval.actor if approval else None,
+            },
             actor,
         )
         return promoted

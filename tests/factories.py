@@ -1,4 +1,4 @@
-"""Test factories shared across unit and integration tests (on sys.path via pytest ``pythonpath``)."""
+"""Test factories shared by unit and integration tests (on sys.path via pytest ``pythonpath``)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,9 @@ from aqta.risk import (
     RiskLimits,
 )
 
-NIFTY_FUT = Instrument(symbol="NIFTY26OCTFUT", exchange=Exchange.NSE, segment=Segment.FUT, lot_size=75)
+NIFTY_FUT = Instrument(
+    symbol="NIFTY26OCTFUT", exchange=Exchange.NSE, segment=Segment.FUT, lot_size=75
+)
 
 
 def make_order(**overrides: Any) -> OrderRequest:

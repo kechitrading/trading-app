@@ -1,7 +1,7 @@
-"""Signed, expiring, single-use approval tokens bound to the exact order payload (RULE-001, FR-024).
+"""Signed, expiring, single-use approval tokens bound to the exact order (RULE-001, FR-024).
 
-Format: ``v1.<base64url(claims-json)>.<base64url(hmac-sha256)>``. The claims carry the SHA-256 of the
-order's canonical JSON, so any change to the order after approval invalidates the token.
+Format: ``v1.<base64url(claims-json)>.<base64url(hmac-sha256)>``. The claims carry the SHA-256
+of the order's canonical JSON, so any change to the order after approval invalidates the token.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from aqta.core.errors import AqtaError, ConfigError
 from aqta.core.ids import new_nonce
 from aqta.core.trading import OrderRequest
 
-TOKEN_VERSION = "v1"
+TOKEN_VERSION = "v1"  # noqa: S105 - format version, not a secret
 MAX_CLOCK_SKEW = timedelta(seconds=5)
 MIN_SECRET_BYTES = 16
 
@@ -41,7 +41,9 @@ class ApprovalTokenError(AqtaError):
 
     def __init__(self, failure: TokenFailure, detail: str = "") -> None:
         self.failure = failure
-        super().__init__(f"approval token rejected: {failure.value}{': ' + detail if detail else ''}")
+        super().__init__(
+            f"approval token rejected: {failure.value}{': ' + detail if detail else ''}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
