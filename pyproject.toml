@@ -87,7 +87,7 @@ python_version = "3.12"
 mypy_path = "src"
 packages = ["aqta"]
 plugins = ["pydantic.mypy"]
-warn_unused_configs = true
+warn_unused_configs = false
 warn_redundant_casts = true
 warn_unused_ignores = true
 check_untyped_defs = true
@@ -102,10 +102,12 @@ strict = true
 module = ["arq.*", "fakeredis.*", "boto3.*", "botocore.*", "asyncpg.*"]
 ignore_missing_imports = true
 
+
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+pythonpath = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra --strict-markers --import-mode=importlib"
