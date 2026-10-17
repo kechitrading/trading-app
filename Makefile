@@ -65,5 +65,6 @@ test-unit: ## Fast unit tests only
 
 .PHONY: audit-deps
 audit-deps: ## pip-audit against the locked dependency set
-	$(UV) export --frozen --all-extras --no-emit-project --format requirements-txt -o .uv-cache/req-audit.txt
-	$(UV) run pip-audit -r .uv-cache/req-audit.txt --disable-pip
+	mkdir -p build
+	$(UV) export --frozen --all-extras --no-emit-project --format requirements-txt -o build/req-audit.txt
+	$(UV) run pip-audit -r build/req-audit.txt --disable-pip

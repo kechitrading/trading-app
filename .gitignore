@@ -40,3 +40,7 @@ deploy/volumes/
 *.swp
 .DS_Store
 Thumbs.db
+
+# BRD is classified Confidential and this GitHub repo is public: keep it local (ADR-0005 #11).
+docs/BRD_AI-Quant-Trading-Assistant_v0.3.md
+docs/BRD_AI-Quant-Trading-Assistant_v0.3.docx
