@@ -157,6 +157,11 @@ for 23:50 IST).
   security group, allow **HTTPS (443) from My IP only**. Then open `https://<ELASTIC_IP>/health` or
   `/docs`. The browser warns once ("not private") because the certificate is self-signed; choose
   Advanced -> Proceed. If your home IP changes, update the security group rule to the new "My IP".
+- **Web dashboard** ([kechitrading/trading-react](https://github.com/kechitrading/trading-react)):
+  the same nginx site serves it at `https://<ELASTIC_IP>/`, with `/api`, `/health`, `/ready` and
+  `/docs` still going to the API. Releases live in `/var/www/aqta-webapp/releases/<sha>`, and
+  `/var/www/aqta-webapp/current` points at the live one. If you ran `setup-nginx-ip.sh` before this
+  was added, run it again once. The dashboard repo deploys itself; see its README.
 - **Remote API access with a domain**: nginx + Let's Encrypt (`deploy/nginx/aqta.conf.example`).
 - **Backups**: nightly `pg_dump` to S3; audit rows are kept for 5 years (NFR-011).
 - **Broker**: register the Elastic IP with the chosen broker (Q-005, REG-001).
