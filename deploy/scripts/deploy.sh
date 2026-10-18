@@ -21,12 +21,20 @@ if [[ "${FORCE_REDEPLOY:-0}" != "1" && -f .deployed_tag && "$(cat .deployed_tag)
 fi
 
 # Postgres container password from Secrets Manager (instance role; never written to git).
-install -d -m 700 /run/aqta
+# /run/aqta is created at boot by systemd-tmpfiles (server-setup.sh) as 0700, owned by the deploy
+# user, so other host users cannot reach the file. The file itself is 0644 because it is
+# bind-mounted into the Postgres container, which reads it as the container's postgres user.
+if [[ ! -d /run/aqta || ! -w /run/aqta ]]; then
+  log "/run/aqta missing or not writable; run deploy/scripts/server-setup.sh first"
+  exit 1
+fi
+umask 022
 aws secretsmanager get-secret-value --region ap-south-1 --secret-id "$SECRET_ID" \
   --query SecretString --output text \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["POSTGRES_PASSWORD"], end="")' \
-  > /run/aqta/pg_password
-chmod 600 /run/aqta/pg_password
+  > /run/aqta/pg_password.tmp
+chmod 644 /run/aqta/pg_password.tmp
+mv /run/aqta/pg_password.tmp /run/aqta/pg_password
 
 if [[ -f .deployed_tag ]]; then
   cp .deployed_tag .previous_tag

@@ -9,7 +9,10 @@ AQTA runs as one Docker image with three roles: `api` (uvicorn), `worker` (arq) 
 make dev   # creates .env with random dev secrets if missing, then docker compose up --build
 ```
 
-## Production host (one-time setup, not automated here)
+## Production host (one-time setup)
+
+Step-by-step walkthrough: [docs/AWS_SETUP.md](../docs/AWS_SETUP.md). The server part is automated by
+`deploy/scripts/server-setup.sh`.
 
 - **EC2 in ap-south-1 (Mumbai)** with an **Elastic IP** registered with the broker (NFR-010, REG-001).
   Change the IP at most once per calendar week.
