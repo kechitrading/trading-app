@@ -171,6 +171,13 @@ jobs:
             # no long-lived registry token is stored on the server.
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
             trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+            # Keep the host's compose file and scripts in step with the commit being deployed.
+            RAW="https://raw.githubusercontent.com/${{ github.repository }}/${{ needs.guard.outputs.sha }}"
+            for f in deploy/compose.prod.yml deploy/scripts/deploy.sh deploy/scripts/rollback.sh; do
+              curl -fsSL "$RAW/$f" -o "/opt/aqta/$(basename "$f").new"
+            done
+            chmod 0750 /opt/aqta/deploy.sh.new /opt/aqta/rollback.sh.new
+            for f in compose.prod.yml deploy.sh rollback.sh; do mv "/opt/aqta/$f.new" "/opt/aqta/$f"; done
             /opt/aqta/deploy.sh "${{ needs.build.outputs.tag }}"
       - name: Roll back on failure
         if: failure()

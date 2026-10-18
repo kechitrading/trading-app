@@ -51,6 +51,8 @@ log "starting services"
 for _ in $(seq 1 30); do
   if curl -fsS "$HEALTH_URL" >/dev/null; then
     echo "$TAG" > .deployed_tag
+    # Lets plain `docker compose ps|logs` in /opt/aqta find the file and the running tag.
+    printf 'COMPOSE_FILE=compose.prod.yml\nIMAGE_TAG=%s\n' "$TAG" > .env
     log "healthy on $TAG"
     exit 0
   fi

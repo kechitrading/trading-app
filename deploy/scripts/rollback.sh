@@ -19,6 +19,8 @@ docker compose -f compose.prod.yml up -d --no-deps api worker
 for _ in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:8000/ready >/dev/null; then
     echo "$TAG" > .deployed_tag
+    # Lets plain `docker compose ps|logs` in /opt/aqta find the file and the running tag.
+    printf 'COMPOSE_FILE=compose.prod.yml\nIMAGE_TAG=%s\n' "$TAG" > .env
     echo "rollback: healthy on $TAG"
     exit 0
   fi

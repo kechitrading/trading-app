@@ -132,7 +132,7 @@ Values to note down as you go (none of them are secrets): **AWS account ID**, **
 21. On the server, check:
     ```bash
     cd /opt/aqta && cat .deployed_tag
-    docker compose -f compose.prod.yml ps
+    docker compose ps
     curl -s localhost:8000/health
     curl -s localhost:8000/ready
     ```
