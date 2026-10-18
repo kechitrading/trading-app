@@ -200,3 +200,20 @@ def test_aws_provider_drops_empty_values() -> None:
     )
     data = AwsSecretsManagerProvider("id", "ap-south-1", client=_FakeSM(raw)).load()
     assert data == {"api_token": "x", "telegram_x": 0}
+
+
+def test_validation_errors_never_echo_secret_values() -> None:
+    """Regression: a prod validation error printed the whole input dict, secrets included, into
+    a public CI log (NFR-008)."""
+    secret = "finnhub-secret-value-should-never-print"
+    with pytest.raises(ValidationError) as exc:
+        make(
+            app_env="prod",
+            api_token="t",
+            approval_secret="s" * 40,
+            finnhub_api_key=secret,
+            risk={"max_orders_per_second": 6},
+        )
+    text = str(exc.value)
+    assert secret not in text and "s" * 40 not in text
+    assert "input_value" not in text
