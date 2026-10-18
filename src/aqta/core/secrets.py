@@ -62,7 +62,11 @@ class AwsSecretsManagerProvider:
         data = json.loads(raw)
         if not isinstance(data, dict):
             raise ConfigError(f"Secret {self._secret_id} must be a JSON object")
-        return {str(k).lower(): v for k, v in data.items()}
+        # Empty values mean "not set", exactly like empty lines in .env (env_ignore_empty):
+        # e.g. "TELEGRAM_ALLOWED_USER_ID": "" must not be parsed as an integer.
+        return {
+            str(k).lower(): v for k, v in data.items() if v is not None and str(v).strip() != ""
+        }
 
 
 def build_secrets_provider(settings: SecretsLocator) -> SecretsProvider:

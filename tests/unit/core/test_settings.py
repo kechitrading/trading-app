@@ -128,11 +128,17 @@ def test_prod_secrets_from_aws_are_applied_before_validation(
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.setenv("SECRETS_PROVIDER", "aws")
     monkeypatch.setenv("AWS_SECRET_ID", "aqta/prod")
+    # Same shape as the JSON in docs/AWS_SETUP.md, including the empty Telegram placeholders.
     secret = json.dumps(
         {
+            "APP_ENV": "prod",
+            "DATABASE_URL": "postgresql+asyncpg://aqta:pw@postgres:5432/aqta",
+            "REDIS_URL": "redis://redis:6379/0",
+            "POSTGRES_PASSWORD": "pw",
             "API_TOKEN": "t" * 43,
             "APPROVAL_SECRET": "s" * 43,
-            "DATABASE_URL": "postgresql+asyncpg://aqta:pw@postgres:5432/aqta",
+            "TELEGRAM_BOT_TOKEN": "",
+            "TELEGRAM_ALLOWED_USER_ID": "",
         }
     )
     monkeypatch.setattr(
@@ -142,6 +148,8 @@ def test_prod_secrets_from_aws_are_applied_before_validation(
     assert s.app_env == "prod"
     assert s.approval_secret.get_secret_value() == "s" * 43
     assert s.database_url.get_secret_value().endswith("@postgres:5432/aqta")
+    assert s.telegram_bot_token is None
+    assert s.telegram_allowed_user_id is None
 
 
 def test_prod_still_refuses_when_secret_lacks_approval_secret(
@@ -156,3 +164,17 @@ def test_prod_still_refuses_when_secret_lacks_approval_secret(
     )
     with pytest.raises(ValidationError, match="APPROVAL_SECRET"):
         load_settings(_env_file=None)
+
+
+def test_aws_provider_drops_empty_values() -> None:
+    raw = json.dumps(
+        {
+            "API_TOKEN": "x",
+            "TELEGRAM_ALLOWED_USER_ID": "",
+            "TELEGRAM_BOT_TOKEN": " ",
+            "AWS_REGION": None,
+            "TELEGRAM_X": 0,
+        }
+    )
+    data = AwsSecretsManagerProvider("id", "ap-south-1", client=_FakeSM(raw)).load()
+    assert data == {"api_token": "x", "telegram_x": 0}
