@@ -1,4 +1,4 @@
-# BRD traceability (BRD-AQTA-001 v1.0)
+# BRD traceability (BRD-AQTA-001 v1.1)
 
 Status: **Impl** = implemented and tested; **Partial** = some logic plus interfaces; **Stub** =
 typed schemas and ports only.
@@ -35,3 +35,8 @@ typed schemas and ports only.
 FR-007 (event calendar), FR-015 (position re-evaluation), FR-029 (broker 2FA login alert),
 FR-035 (automatic kill-switch triggers), FR-037 (risk-limit change cooling-off), FR-040/FR-041/
 FR-042 report content, NFR-002 state recovery from the broker, and TR-001..TR-008 runbooks.
+
+Added by CR-003 (manual execution, v1.1) and not yet built: FR-077 (order tickets), FR-078
+(read-only order sync), FR-079 (mismatch alerts), FR-080 (manual trades), FR-081 (exit alerts and
+paper exits), FR-082 (skipped-proposal tracking), FR-083 (four-group performance report), FR-084
+(manual-mode kill switch). Deferred by CR-003: FR-025, FR-028, NFR-004, NFR-010.

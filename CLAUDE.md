@@ -1,6 +1,6 @@
 # CLAUDE.md: rules for AI coding sessions on AQTA
 
-AQTA is a personal trading assistant for Kashyap (BRD-AQTA-001, `docs/BRD_AI-Quant-Trading-Assistant_v1.0.md`,
+AQTA is a personal trading assistant for Kashyap (BRD-AQTA-001, `docs/BRD_AI-Quant-Trading-Assistant_v1.1.md`,
 kept locally and not in git). Read the BRD section for the feature you touch, and cite BRD IDs
 (FR-xxx, RULE-xxx) in docstrings and TODOs.
 
@@ -11,7 +11,10 @@ kept locally and not in git). Read the BRD section for the feature you touch, an
 2. **Never add live-order code without an explicit instruction from Kashyap in the chat.** That
    covers any real `BrokerPort` adapter, broker SDKs, broker credentials, or changes to
    `LiveBrokerStub`. The broker is Angel One SmartAPI (Q-005, decided 2026-10-18); its
-   credentials exist only as `SecretStr` settings until Kashyap approves the adapter.
+   credentials exist only as `SecretStr` settings.
+   Phase 1 is manual execution (CR-003, RULE-016): a read-only Angel One adapter (login, market
+   data, order book, positions) is allowed, but nothing may place, modify or cancel an order
+   through the API. Kashyap places orders in the Angel One app. Build order: `docs/BUILD_PLAN.md`.
 3. **One order path, no bypass.** proposal -> approval token -> `PreTradeRiskEngine.evaluate`
    -> `BrokerPort` -> audit. Only `OrderGateway.submit_order(order, approval_token)` may call
    `place_order`. Tokens are HMAC-signed, expire (default 5 min), are single-use and are bound to the
