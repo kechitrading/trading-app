@@ -34,19 +34,17 @@ def test_paper_flow_end_to_end(settings: Settings, clock: FrozenClock) -> None:
         legs=(make_order(),),
         status=ProposalStatus.PENDING_APPROVAL,
     )
-    container.proposals.append(proposal)
 
     with TestClient(create_app(container=container)) as client:
         assert client.get("/health").json()["status"] == "ok"
+        client.portal.call(container.proposals.submit, proposal)  # type: ignore[union-attr]
         assert client.get("/api/v1/proposals", headers=AUTH).json()[0]["id"] == "prop_1"
 
-        async def flow() -> None:
-            _, tokens = await container.approvals.approve(proposal, "kashyap", "api")
-            leg = proposal.legs[0]
-            result = await container.gateway.submit_order(leg, tokens[leg.client_order_id])
-            assert result.accepted and result.state is OrderState.FILLED
-
-        client.portal.call(flow)  # type: ignore[union-attr]
+        r = client.post("/api/v1/proposals/prop_1/approve", headers=AUTH)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["proposal"]["status"] == "executed"
+        assert body["orders"][0]["state"] == OrderState.FILLED.value
 
         r = client.post(
             "/api/v1/kill-switch", headers=AUTH, json={"action": "trigger", "reason": "smoke test"}

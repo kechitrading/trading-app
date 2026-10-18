@@ -12,7 +12,7 @@ typed schemas and ports only.
 | `audit` | Impl | FR-054, NFR-011, BR-008 | Append-only trigger, SHA-256 chain, `verify` CLI |
 | `risk` | Impl | BR-004, FR-031, FR-032, FR-033, FR-034, FR-036, RULE-002, RULE-003, REG-003, REG-004 | Pre-trade pipeline, daily-loss block, drawdown halt, kill switch; FR-035 auto-triggers TODO |
 | `execution` | Impl | BR-003, FR-024, FR-025, FR-026, FR-028, FR-030, RULE-001, RULE-010 | Gateway, paper broker, state machine; FR-027 reconciliation is an interface |
-| `proposals` | Impl | FR-011, FR-012, FR-016, FR-023, FR-024 | Lifecycle with validity window; HMAC tokens bound to the order hash |
+| `proposals` | Impl | FR-011, FR-012, FR-016, FR-023, FR-024 | Lifecycle with 5/30/60 min validity; HMAC tokens bound to the order hash; SQL store; approve (TOTP), reject, reduce-size modify; paper approval fills hedge-first (FR-025) |
 | `signals` | Partial | BR-009, FR-006, FR-008, FR-009, FR-010, FR-049, FR-056, FR-060, FR-073 | Composite with per-component value/weight/contribution; components are stubs |
 | `astrology` | Partial | BR-009, BR-020, FR-005, FR-055, FR-070..FR-076, RULE-007, RULE-014, RULE-015, ASM-013 | Rule registry, gate, effective weight; ephemeris and study runner are ports |
 | `strategy` | Impl | BR-011, FR-051, RULE-004, RULE-005, RULE-009 | Promotion state machine; persistence TODO |

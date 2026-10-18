@@ -9,7 +9,15 @@ from aqta.proposals.lifecycle import (
     Horizon,
     Proposal,
     ProposalStatus,
+    resized,
     transition,
+    validity_seconds,
+)
+from aqta.proposals.service import (
+    ApprovalRecord,
+    InMemoryProposalRepository,
+    ProposalRepository,
+    ProposalService,
 )
 from aqta.proposals.tokens import (
     ApprovalClaims,
@@ -22,14 +30,20 @@ from aqta.proposals.tokens import (
 
 __all__ = [
     "ApprovalClaims",
+    "ApprovalRecord",
     "ApprovalService",
     "ApprovalTokenError",
     "ApprovalTokenService",
     "Horizon",
     "InMemoryNonceStore",
+    "InMemoryProposalRepository",
     "NonceStore",
     "Proposal",
+    "ProposalRepository",
+    "ProposalService",
     "ProposalStatus",
     "TokenFailure",
+    "resized",
     "transition",
+    "validity_seconds",
 ]

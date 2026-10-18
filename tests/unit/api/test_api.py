@@ -15,6 +15,7 @@ from aqta.core.errors import AuthError, ConfigError
 from aqta.core.settings import Settings
 from aqta.core.totp import STEP_SECONDS, decode_secret, hotp
 from conftest import TEST_API_TOKEN
+from factories import make_proposal
 
 AUTH = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
 
@@ -135,9 +136,115 @@ async def test_kill_switch_validation_error_shape(client: httpx.AsyncClient) -> 
     assert r.json()["request_id"].startswith("req_")
 
 
-async def test_proposals_stub(client: httpx.AsyncClient) -> None:
+async def test_proposals_empty(client: httpx.AsyncClient) -> None:
     r = await client.get("/api/v1/proposals", headers=AUTH)
     assert r.status_code == 200 and r.json() == []
+
+
+async def test_proposal_list_and_get(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock, lots=(4, 2)))
+    body = (await client.get("/api/v1/proposals", headers=AUTH)).json()
+    assert [x["id"] for x in body] == [p.id]
+    one = (await client.get(f"/api/v1/proposals/{p.id}", headers=AUTH)).json()
+    assert one["status"] == "pending_approval" and one["sets"] == 2
+    assert one["valid_until_ist"].endswith("IST")
+    assert [leg["lots"] for leg in one["legs"]] == [4, 2]
+    assert one["label"].startswith("Proposal only")
+    r = await client.get("/api/v1/proposals?status=rejected", headers=AUTH)
+    assert r.json() == []
+    r = await client.get("/api/v1/proposals/missing", headers=AUTH)
+    assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+
+
+async def test_paper_approve_fills_legs_hedge_first(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock, lots=(2, 2)))
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "paper" and body["proposal"]["status"] == "executed"
+    assert [o["client_order_id"] for o in body["orders"]] == [
+        p.legs[1].client_order_id,
+        p.legs[0].client_order_id,
+    ]
+    assert all(o["accepted"] and o["state"] == "filled" for o in body["orders"])
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "invalid_transition"
+
+
+async def test_paper_approve_blocked_by_kill_switch(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock))
+    await container.kill_switch.trigger("kashyap", "drill")
+    body = (await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)).json()
+    assert body["proposal"]["status"] == "approved"
+    assert body["orders"][0]["accepted"] is False and body["orders"][0]["stage"] == "risk"
+    assert "blocked" in body["note"]
+
+
+async def test_approve_expired_proposal(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock))
+    clock.advance(minutes=5)
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 409 and "expired" in r.json()["error"]["message"]
+
+
+async def test_live_approve_sends_no_orders(settings: Settings, clock: FrozenClock) -> None:
+    live = settings.model_copy(update={"trading_mode": "live", "live_trading_enabled": True})
+    c = build_in_memory_container(live, clock)
+    p = await c.proposals.submit(make_proposal(clock))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(container=c)), base_url="http://t"
+    ) as client:
+        body = (await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)).json()
+    assert body["mode"] == "live" and body["orders"] == []
+    assert body["proposal"]["status"] == "approved" and "Angel One" in body["note"]
+    assert c.gateway.orders == {}
+
+
+async def test_reject_and_modify(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    a = await container.proposals.submit(make_proposal(clock))
+    r = await client.post(
+        f"/api/v1/proposals/{a.id}/reject", headers=AUTH, json={"reason": "not convinced"}
+    )
+    assert r.status_code == 200 and r.json()["status"] == "rejected"
+    r = await client.post(f"/api/v1/proposals/{a.id}/reject", headers=AUTH, json={"reason": "x"})
+    assert r.status_code == 422
+
+    b = await container.proposals.submit(make_proposal(clock, lots=(4, 2)))
+    r = await client.post(f"/api/v1/proposals/{b.id}/modify", headers=AUTH, json={"sets": 1})
+    assert r.status_code == 200
+    smaller = r.json()
+    assert smaller["sets"] == 1 and [leg["lots"] for leg in smaller["legs"]] == [2, 1]
+    assert smaller["rationale"]["modified_from"] == b.id
+    r = await client.post(f"/api/v1/proposals/{b.id}/modify", headers=AUTH, json={"sets": 1})
+    assert r.status_code == 409  # original is cancelled
+    r = await client.post(
+        f"/api/v1/proposals/{smaller['id']}/modify", headers=AUTH, json={"sets": 1}
+    )
+    assert r.status_code == 409  # cannot keep the same size
+
+
+async def test_approve_needs_totp_when_mfa_on(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, c = mfa_client
+    p = await c.proposals.submit(make_proposal(clock))
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 401
+    assert (await c.proposals.get(p.id)).status.value == "pending_approval"
+    r = await client.post(
+        f"/api/v1/proposals/{p.id}/approve", headers={**AUTH, "X-TOTP": _code_now(clock)}
+    )
+    assert r.status_code == 200 and r.json()["proposal"]["status"] == "executed"
 
 
 MFA_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"  # test-only value

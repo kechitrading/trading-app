@@ -76,6 +76,14 @@ class AstrologySettings(BaseModel):
     gate_min_hit_rate: float = 0.60
 
 
+class ProposalSettings(BaseModel):
+    """How long a proposal stays open for approval, per horizon (FR-023; decided 2026-10-18)."""
+
+    intraday_seconds: int = Field(default=300, gt=0)  # BRD default: 5 minutes
+    swing_seconds: int = Field(default=1800, gt=0)
+    positional_seconds: int = Field(default=3600, gt=0)
+
+
 class MarketSessionSettings(BaseModel):
     """Session times in IST. MCX close varies with US DST, hence configurable."""
 
@@ -155,6 +163,7 @@ class Settings(BaseSettings):
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
     astrology: AstrologySettings = Field(default_factory=AstrologySettings)
     sessions: MarketSessionSettings = Field(default_factory=MarketSessionSettings)
+    proposals: ProposalSettings = Field(default_factory=ProposalSettings)
 
     @model_validator(mode="after")
     def _enforce_safety(self) -> Settings:

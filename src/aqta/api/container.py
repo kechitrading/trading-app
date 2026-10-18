@@ -6,7 +6,7 @@ same services to in-memory adapters for tests; it is never used when APP_ENV=pro
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -24,10 +24,12 @@ from aqta.proposals import (
     ApprovalService,
     ApprovalTokenService,
     InMemoryNonceStore,
+    InMemoryProposalRepository,
     NonceStore,
-    Proposal,
+    ProposalRepository,
+    ProposalService,
 )
-from aqta.proposals.adapters import RedisNonceStore
+from aqta.proposals.adapters import RedisNonceStore, SqlProposalRepository
 from aqta.risk import (
     InMemoryKillSwitchStore,
     InMemoryRiskEventSink,
@@ -53,11 +55,11 @@ class Container:
     tokens: ApprovalTokenService
     approvals: ApprovalService
     gateway: OrderGateway
+    proposals: ProposalService
     notifier: NotifierPort
     engine: AsyncEngine | None = None
     redis: Any | None = None
     mfa: TotpVerifier | None = None  # NFR-009; set when MFA_TOTP_SECRET is configured
-    proposals: list[Proposal] = field(default_factory=list)  # TODO(FR-011): SQL repository
 
     async def check_ready(self) -> dict[str, str]:
         checks: dict[str, str] = {}
@@ -89,6 +91,7 @@ def _wire(
     fast_store: KillSwitchStore,
     durable_store: KillSwitchStore | None,
     nonces: NonceStore,
+    proposal_repo: ProposalRepository,
     engine: AsyncEngine | None,
     redis: Any | None,
 ) -> Container:
@@ -104,6 +107,7 @@ def _wire(
     tokens = ApprovalTokenService(secret, clock, nonces, settings.approval_ttl_seconds)
     gateway = OrderGateway(settings, select_broker(settings), tokens, risk, audit, clock)
     kill_switch.register_on_trigger(gateway.on_kill_switch)
+    approvals = ApprovalService(tokens, audit, clock)
     return Container(
         settings=settings,
         clock=clock,
@@ -112,8 +116,9 @@ def _wire(
         halts=halts,
         risk=risk,
         tokens=tokens,
-        approvals=ApprovalService(tokens, audit, clock),
+        approvals=approvals,
         gateway=gateway,
+        proposals=ProposalService(proposal_repo, approvals, tokens, audit, clock),
         notifier=build_notifier(settings),
         engine=engine,
         redis=redis,
@@ -140,6 +145,7 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         fast_store=RedisKillSwitchStore(redis),
         durable_store=SqlKillSwitchStore(sessions),
         nonces=RedisNonceStore(redis),
+        proposal_repo=SqlProposalRepository(sessions, clock),
         engine=engine,
         redis=redis,
     )
@@ -159,6 +165,7 @@ def build_in_memory_container(
         fast_store=RedisKillSwitchStore(redis) if redis is not None else InMemoryKillSwitchStore(),
         durable_store=None,
         nonces=InMemoryNonceStore(),
+        proposal_repo=InMemoryProposalRepository(),
         engine=None,
         redis=redis,
     )

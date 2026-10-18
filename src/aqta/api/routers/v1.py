@@ -4,13 +4,16 @@ also need a fresh TOTP code in ``X-TOTP`` (FR-052, NFR-009)."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from decimal import Decimal
+from typing import Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from aqta.api.deps import Actor, ContainerDep, TotpHeader, check_mfa
+from aqta.api.deps import Actor, ContainerDep, MfaActor, TotpHeader, check_mfa
 from aqta.core.timeutil import format_ist
+from aqta.execution import execute_paper
+from aqta.proposals import Proposal, ProposalStatus
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
 
@@ -85,26 +88,154 @@ async def post_kill_switch(
     )
 
 
+class LegOut(BaseModel):
+    client_order_id: str
+    symbol: str
+    exchange: str
+    side: str
+    quantity: int
+    lots: int
+    order_type: str
+    limit_price: Decimal | None
+    risk_effect: str
+
+
 class ProposalOut(BaseModel):
     id: str
     status: str
     underlying: str
     horizon: str
+    created_at: datetime
     valid_until: datetime
+    valid_until_ist: str
+    sets: int
+    max_loss_inr: Decimal | None
+    margin_required_inr: Decimal | None
+    return_on_margin: Decimal | None
+    legs: list[LegOut]
+    rationale: dict[str, Any]
     label: str
 
-
-@router.get("/proposals")
-async def list_proposals(container: ContainerDep, actor: Actor) -> list[ProposalOut]:
-    """Stub list. TODO(FR-011, FR-023): proposal repository, approve/reject/modify endpoints."""
-    return [
-        ProposalOut(
+    @classmethod
+    def of(cls, p: Proposal) -> ProposalOut:
+        return cls(
             id=p.id,
             status=p.status.value,
             underlying=p.underlying,
             horizon=p.horizon.value,
+            created_at=p.created_at,
             valid_until=p.valid_until,
+            valid_until_ist=format_ist(p.valid_until),
+            sets=p.sets,
+            max_loss_inr=p.max_loss_inr,
+            margin_required_inr=p.margin_required_inr,
+            return_on_margin=p.return_on_margin,
+            legs=[
+                LegOut(
+                    client_order_id=leg.client_order_id,
+                    symbol=leg.instrument.symbol,
+                    exchange=leg.instrument.exchange.value,
+                    side=leg.side.value,
+                    quantity=leg.quantity,
+                    lots=leg.lots,
+                    order_type=leg.order_type.value,
+                    limit_price=leg.limit_price,
+                    risk_effect=leg.risk_effect.value,
+                )
+                for leg in p.legs
+            ],
+            rationale=p.rationale,
             label=p.label,
         )
-        for p in container.proposals
-    ]
+
+
+@router.get("/proposals")
+async def list_proposals(
+    container: ContainerDep, actor: Actor, status: ProposalStatus | None = None
+) -> list[ProposalOut]:
+    """FR-011, FR-023: newest first. Overdue pending proposals are marked expired first."""
+    statuses = None if status is None else [status]
+    return [ProposalOut.of(p) for p in await container.proposals.find(statuses)]
+
+
+@router.get("/proposals/{proposal_id}")
+async def get_proposal(proposal_id: str, container: ContainerDep, actor: Actor) -> ProposalOut:
+    await container.proposals.expire_due()
+    return ProposalOut.of(await container.proposals.get(proposal_id))
+
+
+class LegResultOut(BaseModel):
+    client_order_id: str
+    accepted: bool
+    stage: str | None
+    reasons: list[str]
+    state: str | None
+
+
+class ApproveOut(BaseModel):
+    proposal: ProposalOut
+    mode: str
+    orders: list[LegResultOut]
+    note: str
+
+
+@router.post("/proposals/{proposal_id}/approve")
+async def approve_proposal(
+    proposal_id: str, container: ContainerDep, actor: MfaActor
+) -> ApproveOut:
+    """FR-023, FR-024, FR-052 (needs X-TOTP). Paper mode fills each leg on the paper broker
+    through the order gateway, risk-reducing legs first (FR-025, FR-030). Live mode sends nothing
+    (CR-003): the proposal is approved and the order ticket comes from FR-077."""
+    proposal, tokens = await container.proposals.approve(proposal_id, actor, "api")
+    if not container.settings.is_paper:
+        return ApproveOut(
+            proposal=ProposalOut.of(proposal),
+            mode="live",
+            orders=[],
+            note="Approved. Place the orders in the Angel One app (manual execution, CR-003).",
+        )
+    results = await execute_paper(container.gateway, proposal.legs, tokens)
+    all_done = len(results) == len(proposal.legs) and all(r.accepted for r in results)
+    if all_done:
+        proposal = await container.proposals.mark_executed(proposal_id, actor)
+    return ApproveOut(
+        proposal=ProposalOut.of(proposal),
+        mode="paper",
+        orders=[
+            LegResultOut(
+                client_order_id=r.client_order_id,
+                accepted=r.accepted,
+                stage=None if r.stage is None else r.stage.value,
+                reasons=list(r.reasons),
+                state=None if r.state is None else r.state.value,
+            )
+            for r in results
+        ],
+        note="Paper orders filled." if all_done else "Stopped at a blocked leg; see reasons.",
+    )
+
+
+class RejectIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+@router.post("/proposals/{proposal_id}/reject")
+async def reject_proposal(
+    proposal_id: str, body: RejectIn, container: ContainerDep, actor: Actor
+) -> ProposalOut:
+    """FR-023. Rejecting adds no risk, so the API token is enough."""
+    return ProposalOut.of(await container.proposals.reject(proposal_id, actor, body.reason))
+
+
+class ModifyIn(BaseModel):
+    sets: int = Field(ge=1, description="New size in sets; must be lower than the current sets.")
+
+
+@router.post("/proposals/{proposal_id}/modify")
+async def modify_proposal(
+    proposal_id: str, body: ModifyIn, container: ContainerDep, actor: Actor
+) -> ProposalOut:
+    """FR-023, reduce size only: the original is cancelled and a smaller copy opens for
+    approval. Smaller size cannot add risk, so the API token is enough; approving the copy
+    needs TOTP."""
+    return ProposalOut.of(await container.proposals.modify(proposal_id, actor, body.sets))
