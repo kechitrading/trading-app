@@ -101,6 +101,8 @@ class Settings(BaseSettings):
         extra="ignore",
         case_sensitive=False,
         env_ignore_empty=True,
+        # Never echo input values in validation errors: they contain secrets (NFR-008).
+        hide_input_in_errors=True,
     )
 
     app_env: AppEnv = AppEnv.DEV
@@ -205,7 +207,11 @@ class SecretsLocation(BaseSettings):
     checks) is validated once, after the secret store's values have been merged in."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        env_ignore_empty=True,
+        hide_input_in_errors=True,
     )
 
     secrets_provider: Literal["env", "aws"] = "env"
