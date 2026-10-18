@@ -75,6 +75,6 @@ docs/adr/         architecture decisions; docs/BRD_TRACEABILITY.md maps modules 
 
 ## Deployment
 
-See [deploy/README.md](deploy/README.md). GitHub Actions builds the image and deploys over SSH to
-the Mumbai EC2 host. Deploys are refused 08:30-23:45 IST on weekdays unless forced with a reason.
-A failed health check rolls back automatically.
+See [deploy/README.md](deploy/README.md). Every merge to `main` deploys automatically to the Mumbai
+EC2 host once CI passes. Merges between 08:30 and 23:45 IST on weekdays are held for the nightly
+23:50 IST deploy (NFR-015). A failed health check rolls back automatically.

@@ -13,6 +13,13 @@ SECRET_ID="${AWS_SECRET_ID:-aqta/prod}"
 cd "$APP_DIR"
 log() { printf '%s [deploy] %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
+# The nightly run redeploys main's head: do nothing if that image is already live and healthy.
+if [[ "${FORCE_REDEPLOY:-0}" != "1" && -f .deployed_tag && "$(cat .deployed_tag)" == "$TAG" ]] \
+  && curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+  log "$TAG is already deployed and healthy; nothing to do"
+  exit 0
+fi
+
 # Postgres container password from Secrets Manager (instance role; never written to git).
 install -d -m 700 /run/aqta
 aws secretsmanager get-secret-value --region ap-south-1 --secret-id "$SECRET_ID" \

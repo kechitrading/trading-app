@@ -1,7 +1,19 @@
 name: Deploy
 
-# NFR-015: deploy through GitHub only, never during trading hours, rollback within 10 minutes.
+# Continuous deployment of main to the AWS host (Mumbai).
+#
+# - Every merge/push to main deploys automatically once CI has passed on that commit.
+# - NFR-015: no deploys 08:30-23:45 IST on weekdays. A merge inside that window is not lost:
+#   it is skipped with a notice and picked up by the nightly run at 23:50 IST.
+# - Manual runs (deploy / rollback) can override the window only with force=true and a reason.
+# - Rollback: automatic on a failed health check, or manually via the rollback action.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "20 18 * * 1-5"  # 23:50 IST Mon-Fri: deploy whatever main is at, if not deployed yet
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -27,6 +39,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: read
 
 concurrency:
   group: deploy-production
@@ -37,41 +50,88 @@ env:
 
 jobs:
   guard:
-    name: Trading-hours freeze (IST)
+    name: Decide whether to deploy (CI status + IST freeze)
     runs-on: ubuntu-latest
+    # Auto-deploy only after a successful CI run of a push to main (not PRs, not failures).
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    outputs:
+      proceed: ${{ steps.window.outputs.proceed }}
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - name: Refuse deploys 08:30-23:45 IST on weekdays
+      - name: Resolve commit to deploy
+        id: sha
         env:
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "sha=${RUN_SHA:-$GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Check CI passed for this commit (scheduled, tag and manual runs)
+        if: github.event_name != 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          ACTION: ${{ inputs.action || 'deploy' }}
+        run: |
+          if [ "$ACTION" = "rollback" ]; then exit 0; fi
+          status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=push&status=success" --jq '.total_count')
+          if [ "${status:-0}" -lt 1 ]; then
+            echo "::error::No successful CI run for ${SHA}; refusing to deploy."
+            exit 1
+          fi
+
+      - name: Trading-hours freeze (IST)
+        id: window
+        env:
+          EVENT: ${{ github.event_name }}
           FORCE: ${{ inputs.force || 'false' }}
           REASON: ${{ inputs.reason }}
+          DEPLOY_CONFIGURED: ${{ secrets.DEPLOY_HOST != '' }}
         run: |
+          if [ "$DEPLOY_CONFIGURED" != "true" ]; then
+            echo "::notice::DEPLOY_HOST secret not set yet: skipping deploy (see deploy/README.md)."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           dow=$(TZ=Asia/Kolkata date +%u)            # 1=Mon .. 7=Sun
           hm=$((10#$(TZ=Asia/Kolkata date +%H%M)))   # e.g. 0830 -> 830
           echo "IST now: $(TZ=Asia/Kolkata date '+%a %F %H:%M')"
           # Exchange holidays are treated as trading days (conservative).
           if [ "$dow" -le 5 ] && [ "$hm" -ge 830 ] && [ "$hm" -le 2345 ]; then
-            if [ "$FORCE" = "true" ]; then
-              if [ -z "$REASON" ]; then
-                echo "::error::force=true requires a reason"; exit 1
-              fi
+            if [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE" = "true" ]; then
+              if [ -z "$REASON" ]; then echo "::error::force=true requires a reason"; exit 1; fi
               echo "::warning::FORCED deploy inside the trading window by ${GITHUB_ACTOR}: ${REASON} (NFR-015)"
-            else
-              echo "::error::Deploys are blocked 08:30-23:45 IST on weekdays (NFR-015). Re-run with force=true and a reason only in an emergency."
+            elif [ "$EVENT" = "workflow_dispatch" ]; then
+              echo "::error::Deploys are blocked 08:30-23:45 IST on weekdays (NFR-015). Use force=true with a reason only in an emergency."
               exit 1
+            else
+              echo "::notice::Inside the trading window: deploy deferred to the 23:50 IST nightly run (NFR-015)."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
           fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build and push image
     needs: guard
-    if: ${{ github.event_name == 'push' || inputs.action == 'deploy' }}
+    if: >-
+      needs.guard.outputs.proceed == 'true' &&
+      (github.event_name != 'workflow_dispatch' || inputs.action == 'deploy')
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.sha }}
       - id: tag
-        run: echo "tag=${{ inputs.image_tag || github.sha }}" >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+          SHA: ${{ needs.guard.outputs.sha }}
+        run: echo "tag=${INPUT_TAG:-$SHA}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -85,7 +145,7 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:${{ needs.guard.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -93,7 +153,7 @@ jobs:
     name: Deploy to AWS (Mumbai)
     needs: [guard, build]
     runs-on: ubuntu-latest
-    environment: production  # configure required reviewers on this environment in GitHub
+    environment: production  # optional: add required reviewers here to approve each deploy
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
@@ -114,7 +174,9 @@ jobs:
   rollback:
     name: Roll back to previous image
     needs: guard
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'rollback' }}
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.action == 'rollback' &&
+      needs.guard.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10

@@ -51,11 +51,25 @@ WantedBy=multi-user.target
 
 ## Deploys and rollback (NFR-015)
 
+**Merging to `main` deploys automatically.** When CI passes on a push to `main`,
 `.github/workflows/deploy.yml` builds and pushes `ghcr.io/kechitrading/trading-app:<sha>`, then
-runs `deploy.sh <sha>` over SSH. The job **fails inside 08:30-23:45 IST on weekdays** unless it is
-started manually with `force=true`, which logs a warning. `deploy.sh` keeps the previous tag, and a
-failed health check triggers `rollback.sh` automatically. A manual rollback is the `rollback`
-action of the same workflow.
+runs `deploy.sh <sha>` over SSH.
+
+| Trigger | Inside 08:30-23:45 IST, Mon-Fri | Outside that window |
+|---|---|---|
+| CI green on `main` (merge/push) | skipped with a notice; the nightly run deploys it | deploys |
+| Nightly 23:50 IST (Mon-Fri) | n/a | deploys `main`'s head if CI passed and it isn't live yet |
+| Version tag `v*` | skipped with a notice | deploys (CI must have passed for that commit) |
+| Manual run (Actions -> Deploy) | fails, unless `force=true` with a reason (logged as a warning) | deploys or rolls back |
+
+Nothing deploys while the `DEPLOY_HOST` secret is unset: the run is skipped with a notice. Failed
+CI never deploys. If the `production` environment has required reviewers, each deploy waits for
+your approval in GitHub; without reviewers it is fully automatic.
+
+`deploy.sh` does nothing if the requested tag is already live and healthy. Set
+`FORCE_REDEPLOY=1` on the host to override that. It keeps the previous tag, and a failed health
+check triggers `rollback.sh` automatically. A manual rollback is the `rollback` action of the
+same workflow.
 
 Migrations must stay **expand-only** (add columns/tables; never drop or rename within one release),
 so that the previous image can still run after a rollback.
