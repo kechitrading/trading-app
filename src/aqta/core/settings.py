@@ -119,7 +119,10 @@ class Settings(BaseSettings):
     # --- API
     api_token: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=list)
-    mfa_required: bool = False  # TODO(NFR-009, FR-052): enforce TOTP before paper start.
+    # NFR-009, FR-052: TOTP on sensitive actions. Always on in prod; the secret comes from
+    # scripts/mfa_setup.py and is added to your authenticator app.
+    mfa_required: bool = False
+    mfa_totp_secret: SecretStr | None = None
     # /docs and /openapi.json are always on outside prod; in prod only when explicitly enabled
     # (the API is reachable only through nginx from allowlisted IPs).
     docs_enabled: bool = False
@@ -169,6 +172,16 @@ class Settings(BaseSettings):
                 )
             if self.api_token is None:
                 raise ConfigError("API_TOKEN must be set in prod.")
+            if not self.mfa_required:
+                raise ConfigError("MFA_REQUIRED must be true in prod (NFR-009).")
+        if self.mfa_required:
+            from aqta.core.totp import decode_secret  # local import keeps settings light
+
+            if self.mfa_totp_secret is None:
+                raise ConfigError(
+                    "MFA_REQUIRED=true needs MFA_TOTP_SECRET (run scripts/mfa_setup.py)."
+                )
+            decode_secret(self.mfa_totp_secret.get_secret_value())
         return self
 
     @property

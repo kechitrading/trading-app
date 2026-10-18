@@ -17,6 +17,7 @@ from aqta.core.clock import Clock, SystemClock
 from aqta.core.db import create_engine, create_session_factory, ping_db
 from aqta.core.errors import ConfigError
 from aqta.core.settings import AppEnv, Settings
+from aqta.core.totp import TotpVerifier
 from aqta.execution import OrderGateway, select_broker
 from aqta.notifications import NotifierPort, build_notifier
 from aqta.proposals import (
@@ -55,6 +56,7 @@ class Container:
     notifier: NotifierPort
     engine: AsyncEngine | None = None
     redis: Any | None = None
+    mfa: TotpVerifier | None = None  # NFR-009; set when MFA_TOTP_SECRET is configured
     proposals: list[Proposal] = field(default_factory=list)  # TODO(FR-011): SQL repository
 
     async def check_ready(self) -> dict[str, str]:
@@ -115,7 +117,14 @@ def _wire(
         notifier=build_notifier(settings),
         engine=engine,
         redis=redis,
+        mfa=_build_mfa(settings, clock),
     )
+
+
+def _build_mfa(settings: Settings, clock: Clock) -> TotpVerifier | None:
+    if settings.mfa_totp_secret is None:
+        return None
+    return TotpVerifier(settings.mfa_totp_secret.get_secret_value(), clock)
 
 
 def build_container(settings: Settings, clock: Clock | None = None) -> Container:

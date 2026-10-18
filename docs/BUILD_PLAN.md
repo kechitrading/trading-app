@@ -9,7 +9,7 @@ listed in order: each depends only on tasks above it. Target: paper trading from
 
 | # | Task | BRD IDs | Done when |
 |---|---|---|---|
-| 1 | Dashboard login MFA (TOTP) | NFR-009, FR-052 | Approving or changing a limit fails without a valid TOTP code. |
+| 1 | Done: dashboard and API MFA (TOTP) | NFR-009, FR-052 | Approving or changing a limit fails without a valid TOTP code. |
 | 2 | Proposals in the database; approve/reject/modify endpoints | FR-011, FR-023, FR-024 | Proposals survive a restart; approval after expiry is rejected. |
 | 3 | Telegram approve/reject/modify buttons and `/kill` | FR-023, FR-034, NFR-017, FR-052 | Decision in 2 taps or fewer; unlisted accounts ignored and logged. |
 | 4 | Shared trading-cost model (brokerage, STT, stamp duty, GST, exchange charges, slippage) | FR-021, FR-030, FR-046 | One model used by paper fills, arbitrage net edge and backtests. |

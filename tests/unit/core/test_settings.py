@@ -10,6 +10,8 @@ from aqta.core.errors import ConfigError
 from aqta.core.secrets import AwsSecretsManagerProvider, EnvSecretsProvider, build_secrets_provider
 from aqta.core.settings import Settings, TradingMode, load_settings
 
+TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"  # test-only value
+
 
 def make(**kw: object) -> Settings:
     return Settings(_env_file=None, **kw)  # type: ignore[arg-type]
@@ -64,8 +66,26 @@ def test_prod_requires_strong_secrets() -> None:
         make(app_env="prod", api_token="x")
     with pytest.raises(ValidationError, match="API_TOKEN"):
         make(app_env="prod", approval_secret="s" * 40)
-    ok = make(app_env="prod", approval_secret="s" * 40, api_token="t")
+    with pytest.raises(ValidationError, match="MFA_REQUIRED"):
+        make(app_env="prod", approval_secret="s" * 40, api_token="t")
+    ok = make(
+        app_env="prod",
+        approval_secret="s" * 40,
+        api_token="t",
+        mfa_required=True,
+        mfa_totp_secret=TOTP_SECRET,
+    )
     assert ok.app_env == "prod"
+
+
+def test_mfa_required_needs_a_valid_secret() -> None:
+    with pytest.raises(ValidationError, match="MFA_TOTP_SECRET"):
+        make(mfa_required=True)
+    with pytest.raises(ValidationError, match="base32"):
+        make(mfa_required=True, mfa_totp_secret="not base32 !!")
+    with pytest.raises(ValidationError, match="16 bytes"):
+        make(mfa_required=True, mfa_totp_secret="JBSWY3DP")
+    assert make(mfa_required=True, mfa_totp_secret=TOTP_SECRET).mfa_required
 
 
 def test_secrets_never_render_in_repr() -> None:
@@ -137,6 +157,8 @@ def test_prod_secrets_from_aws_are_applied_before_validation(
             "POSTGRES_PASSWORD": "pw",
             "API_TOKEN": "t" * 43,
             "APPROVAL_SECRET": "s" * 43,
+            "MFA_REQUIRED": "true",
+            "MFA_TOTP_SECRET": TOTP_SECRET,
             "TELEGRAM_BOT_TOKEN": "",
             "TELEGRAM_ALLOWED_USER_ID": "",
         }

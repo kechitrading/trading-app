@@ -1,17 +1,18 @@
-"""Versioned API. Every route needs the API token and passes the MFA hook (FR-052, NFR-009)."""
+"""Versioned API. Every route needs the API token; routes that approve orders or loosen controls
+also need a fresh TOTP code in ``X-TOTP`` (FR-052, NFR-009)."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from aqta.api.deps import Actor, ContainerDep, verify_mfa
+from aqta.api.deps import Actor, ContainerDep, TotpHeader, check_mfa
 from aqta.core.timeutil import format_ist
 
-router = APIRouter(prefix="/api/v1", tags=["v1"], dependencies=[Depends(verify_mfa)])
+router = APIRouter(prefix="/api/v1", tags=["v1"])
 
 
 class ModeOut(BaseModel):
@@ -60,9 +61,15 @@ async def get_kill_switch(container: ContainerDep, actor: Actor) -> KillSwitchOu
 
 @router.post("/kill-switch")
 async def post_kill_switch(
-    body: KillSwitchIn, container: ContainerDep, actor: Actor
+    body: KillSwitchIn, container: ContainerDep, actor: Actor, totp: TotpHeader = None
 ) -> KillSwitchOut:
-    """FR-034: trigger cancels all open orders and blocks new ones. Release needs a reason."""
+    """FR-034: trigger cancels all open orders and blocks new ones. Release needs a reason.
+
+    Triggering needs only the API token, so the switch stays available in an emergency.
+    Releasing loosens a control, so it also needs a TOTP code (FR-052).
+    """
+    if body.action == "release":
+        check_mfa(container, totp)
     open_before = len(container.gateway.open_orders())
     if body.action == "trigger":
         state = await container.kill_switch.trigger(actor, body.reason)

@@ -6,11 +6,14 @@ import fakeredis
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import SecretStr
 
 from aqta.api import Container, build_in_memory_container, create_app
+from aqta.api.deps import MfaActor, check_mfa
 from aqta.core.clock import FrozenClock
-from aqta.core.errors import ConfigError
+from aqta.core.errors import AuthError, ConfigError
 from aqta.core.settings import Settings
+from aqta.core.totp import STEP_SECONDS, decode_secret, hotp
 from conftest import TEST_API_TOKEN
 
 AUTH = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
@@ -137,13 +140,109 @@ async def test_proposals_stub(client: httpx.AsyncClient) -> None:
     assert r.status_code == 200 and r.json() == []
 
 
-async def test_mfa_hook_fails_closed(settings: Settings, clock: FrozenClock) -> None:
-    c = build_in_memory_container(settings.model_copy(update={"mfa_required": True}), clock)
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=create_app(container=c)), base_url="http://t"
-    ) as client:
-        r = await client.get("/api/v1/mode", headers=AUTH)
-    assert r.status_code == 401 and "MFA" in r.json()["error"]["message"]
+MFA_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"  # test-only value
+
+
+def _code_now(clock: FrozenClock, offset_steps: int = 0) -> str:
+    counter = int(clock.now().timestamp()) // STEP_SECONDS + offset_steps
+    return hotp(decode_secret(MFA_SECRET), counter)
+
+
+@pytest.fixture
+async def mfa_client(
+    settings: Settings, clock: FrozenClock
+) -> AsyncIterator[tuple[httpx.AsyncClient, Container]]:
+    s = settings.model_copy(update={"mfa_required": True, "mfa_totp_secret": SecretStr(MFA_SECRET)})
+    c = build_in_memory_container(s, clock)
+    transport = httpx.ASGITransport(app=create_app(container=c))
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        yield client, c
+
+
+async def test_mfa_reads_need_only_the_token(
+    mfa_client: tuple[httpx.AsyncClient, Container],
+) -> None:
+    client, _ = mfa_client
+    assert (await client.get("/api/v1/mode", headers=AUTH)).status_code == 200
+
+
+async def test_mfa_trigger_stays_available_without_totp(
+    mfa_client: tuple[httpx.AsyncClient, Container],
+) -> None:
+    """FR-034: the kill switch must not be blocked by a missing code in an emergency."""
+    client, c = mfa_client
+    r = await client.post(
+        "/api/v1/kill-switch", headers=AUTH, json={"action": "trigger", "reason": "emergency"}
+    )
+    assert r.status_code == 200 and await c.kill_switch.is_active()
+
+
+@pytest.mark.parametrize("totp", [None, "000000", "12345", "abcdef"])
+async def test_mfa_release_refused_without_valid_totp(
+    mfa_client: tuple[httpx.AsyncClient, Container], totp: str | None
+) -> None:
+    client, c = mfa_client
+    await c.kill_switch.trigger("kashyap", "drill")
+    headers = AUTH if totp is None else {**AUTH, "X-TOTP": totp}
+    r = await client.post(
+        "/api/v1/kill-switch", headers=headers, json={"action": "release", "reason": "done"}
+    )
+    assert r.status_code == 401 and "TOTP" in r.json()["error"]["message"]
+    assert await c.kill_switch.is_active()
+
+
+async def test_mfa_release_with_valid_totp_then_replay_refused(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, c = mfa_client
+    await c.kill_switch.trigger("kashyap", "drill")
+    headers = {**AUTH, "X-TOTP": _code_now(clock)}
+    body = {"action": "release", "reason": "drill over"}
+    r = await client.post("/api/v1/kill-switch", headers=headers, json=body)
+    assert r.status_code == 200 and r.json()["active"] is False
+
+    await c.kill_switch.trigger("kashyap", "drill 2")
+    r = await client.post("/api/v1/kill-switch", headers=headers, json=body)
+    assert r.status_code == 401  # same code cannot be used twice
+    clock.advance(seconds=STEP_SECONDS)
+    r = await client.post(
+        "/api/v1/kill-switch", headers={**AUTH, "X-TOTP": _code_now(clock)}, json=body
+    )
+    assert r.status_code == 200
+
+
+async def test_mfa_code_is_not_consumed_by_a_bad_token(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, c = mfa_client
+    await c.kill_switch.trigger("kashyap", "drill")
+    code = _code_now(clock)
+    body = {"action": "release", "reason": "done"}
+    bad = {"Authorization": "Bearer wrong", "X-TOTP": code}
+    assert (await client.post("/api/v1/kill-switch", headers=bad, json=body)).status_code == 401
+    good = {**AUTH, "X-TOTP": code}
+    assert (await client.post("/api/v1/kill-switch", headers=good, json=body)).status_code == 200
+
+
+async def test_mfa_fails_closed_without_verifier(container: Container) -> None:
+    container.settings = container.settings.model_copy(update={"mfa_required": True})
+    with pytest.raises(AuthError, match="no TOTP secret"):
+        check_mfa(container, "123456")
+
+
+async def test_require_mfa_dependency(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, _ = mfa_client
+    app = client._transport.app  # type: ignore[attr-defined]
+
+    @app.post("/sensitive")
+    async def sensitive(actor: MfaActor) -> dict[str, str]:
+        return {"actor": actor}
+
+    assert (await client.post("/sensitive", headers=AUTH)).status_code == 401
+    r = await client.post("/sensitive", headers={**AUTH, "X-TOTP": _code_now(clock)})
+    assert r.status_code == 200 and r.json() == {"actor": "kashyap"}
 
 
 async def test_no_configured_token_refuses_everything(

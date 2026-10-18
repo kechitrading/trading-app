@@ -18,7 +18,7 @@ typed schemas and ports only.
 | `strategy` | Impl | BR-011, FR-051, RULE-004, RULE-005, RULE-009 | Promotion state machine; persistence TODO |
 | `notifications` | Partial | BR-013, FR-023, FR-026, FR-044, FR-045, FR-052, NFR-017 | Telegram allowlist, fake notifier, 600-char summary; approve buttons TODO; WhatsApp pending Q-003 |
 | `worker` | Partial | FR-038, FR-039, FR-047, FR-074, FR-076 | IST crons; jobs are placeholders |
-| `api` | Partial | FR-034, FR-052, NFR-001, NFR-009 | Health/ready, mode, kill switch, proposals stub; MFA hook TODO |
+| `api` | Partial | FR-034, FR-052, NFR-001, NFR-009 | Health/ready, mode, kill switch, proposals stub; TOTP MFA (X-TOTP) on sensitive actions, required in prod |
 | `ingestion` | Stub | BR-001, FR-001..FR-004, FR-057, FR-058, NFR-021 | Ports; FR-004 staleness checker implemented |
 | `analysis` | Stub | BR-017, BR-018, FR-059, FR-061..FR-065, RULE-012 | Schemas + analyzer ports |
 | `forecasting` | Stub | BR-019, FR-066, FR-067, FR-068, RULE-011, NFR-020, NFR-022 | Band schema, label, coverage/reliability check |

@@ -25,6 +25,8 @@ Values to note down as you go (none of them are secrets): **AWS account ID**, **
      "REDIS_URL": "redis://redis:6379/0",
      "POSTGRES_PASSWORD": "<POSTGRES_PASSWORD>",
      "API_TOKEN": "<API_TOKEN>",
+     "MFA_REQUIRED": "true",
+     "MFA_TOTP_SECRET": "<from scripts/mfa_setup.py>",
      "APPROVAL_SECRET": "<APPROVAL_SECRET>",
      "TELEGRAM_BOT_TOKEN": "",
      "TELEGRAM_ALLOWED_USER_ID": "",
