@@ -1,6 +1,7 @@
 """LLM port and monthly cost tracker (FR-053, CON-002, NFR-014, Q-010).
 
-The provider is still to be chosen (Q-010); nothing here calls an API.
+Provider: Anthropic Claude (Q-010, decided 2026-10-18; ``ANTHROPIC_API_KEY``, ``LLM_MODEL``).
+No adapter calls the API yet.
 """
 
 from __future__ import annotations

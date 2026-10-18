@@ -1,4 +1,4 @@
-# BRD traceability (BRD-AQTA-001 v0.3)
+# BRD traceability (BRD-AQTA-001 v1.0)
 
 Status: **Impl** = implemented and tested; **Partial** = some logic plus interfaces; **Stub** =
 typed schemas and ports only.

@@ -1,11 +1,11 @@
 # trading-app
 
-**AQTA: AI Quant Trading Assistant** (BRD-AQTA-001 v0.3). A personal, human-approved, paper-first
+**AQTA: AI Quant Trading Assistant** (BRD-AQTA-001 v1.0). A personal, human-approved, paper-first
 quant desk for NSE, BSE and MCX. This repository is the **project skeleton**. The safety-critical
 core (risk checks, approval tokens, order gateway, audit log) is implemented and tested. The other
 modules are typed interfaces and stubs, ready for feature work.
 
-> Default mode is **PAPER**. No live broker code exists yet (broker choice is open, Q-005).
+> Default mode is **PAPER**. No live broker code exists yet (broker: Angel One SmartAPI, Q-005; adapter not built).
 > No order can reach a broker without a valid, unexpired, single-use approval token and a passing
 > pre-trade risk check. Every step is written to a hash-chained, append-only audit log.
 

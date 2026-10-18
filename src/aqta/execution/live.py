@@ -1,7 +1,7 @@
 """Placeholder for the real broker adapter. Intentionally unimplemented.
 
 Do not add live-order code without an explicit instruction from Kashyap (see CLAUDE.md). The broker
-is still undecided (Q-005: Zerodha / Angel One / Upstox / Dhan), and live trading also needs the
+is Angel One SmartAPI (Q-005, decided 2026-10-18), and live trading also needs the
 static IP (NFR-010), daily 2FA login (FR-029) and the algo identifier (FR-028, Q-008).
 """
 
@@ -13,7 +13,7 @@ from aqta.core.trading import OrderRequest
 from aqta.execution.ports import BrokerAck, BrokerOrderSnapshot, BrokerPort, BrokerPosition
 
 _MSG = (
-    "Live broker adapter not implemented: broker selection is open (BRD Q-005). "
+    "Live broker adapter not implemented (Angel One SmartAPI, BRD Q-005). "
     "Implement a BrokerPort adapter only after Kashyap explicitly approves live-order code."
 )
 
