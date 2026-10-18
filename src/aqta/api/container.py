@@ -6,7 +6,7 @@ same services to in-memory adapters for tests; it is never used when APP_ENV=pro
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -17,16 +17,26 @@ from aqta.core.clock import Clock, SystemClock
 from aqta.core.db import create_engine, create_session_factory, ping_db
 from aqta.core.errors import ConfigError
 from aqta.core.settings import AppEnv, Settings
+from aqta.core.totp import TotpVerifier
 from aqta.execution import OrderGateway, select_broker
-from aqta.notifications import NotifierPort, build_notifier
+from aqta.notifications import (
+    FakeProposalPublisher,
+    NotifierPort,
+    TelegramProposalPublisher,
+    build_bot,
+    build_notifier,
+    build_publisher,
+)
 from aqta.proposals import (
     ApprovalService,
     ApprovalTokenService,
     InMemoryNonceStore,
+    InMemoryProposalRepository,
     NonceStore,
-    Proposal,
+    ProposalRepository,
+    ProposalService,
 )
-from aqta.proposals.adapters import RedisNonceStore
+from aqta.proposals.adapters import RedisNonceStore, SqlProposalRepository
 from aqta.risk import (
     InMemoryKillSwitchStore,
     InMemoryRiskEventSink,
@@ -52,10 +62,13 @@ class Container:
     tokens: ApprovalTokenService
     approvals: ApprovalService
     gateway: OrderGateway
+    proposals: ProposalService
     notifier: NotifierPort
+    publisher: TelegramProposalPublisher | FakeProposalPublisher
     engine: AsyncEngine | None = None
     redis: Any | None = None
-    proposals: list[Proposal] = field(default_factory=list)  # TODO(FR-011): SQL repository
+    mfa: TotpVerifier | None = None  # NFR-009; set when MFA_TOTP_SECRET is configured
+    telegram_bot: Any | None = None  # polled by the API process (see aqta.api.app)
 
     async def check_ready(self) -> dict[str, str]:
         checks: dict[str, str] = {}
@@ -73,6 +86,8 @@ class Container:
         return self.redis is not None and await ping_redis(self.redis)
 
     async def close(self) -> None:
+        if self.telegram_bot is not None:
+            await self.telegram_bot.session.close()
         if self.redis is not None:
             await self.redis.aclose()
         if self.engine is not None:
@@ -87,6 +102,7 @@ def _wire(
     fast_store: KillSwitchStore,
     durable_store: KillSwitchStore | None,
     nonces: NonceStore,
+    proposal_repo: ProposalRepository,
     engine: AsyncEngine | None,
     redis: Any | None,
 ) -> Container:
@@ -102,6 +118,11 @@ def _wire(
     tokens = ApprovalTokenService(secret, clock, nonces, settings.approval_ttl_seconds)
     gateway = OrderGateway(settings, select_broker(settings), tokens, risk, audit, clock)
     kill_switch.register_on_trigger(gateway.on_kill_switch)
+    approvals = ApprovalService(tokens, audit, clock)
+    proposals = ProposalService(proposal_repo, approvals, tokens, audit, clock)
+    bot = build_bot(settings)
+    publisher = build_publisher(settings, bot)
+    proposals.on_new_pending(publisher.publish)  # FR-023: every open proposal goes to Telegram
     return Container(
         settings=settings,
         clock=clock,
@@ -110,12 +131,22 @@ def _wire(
         halts=halts,
         risk=risk,
         tokens=tokens,
-        approvals=ApprovalService(tokens, audit, clock),
+        approvals=approvals,
         gateway=gateway,
-        notifier=build_notifier(settings),
+        proposals=proposals,
+        notifier=build_notifier(settings, bot),
+        publisher=publisher,
+        telegram_bot=bot,
         engine=engine,
         redis=redis,
+        mfa=_build_mfa(settings, clock),
     )
+
+
+def _build_mfa(settings: Settings, clock: Clock) -> TotpVerifier | None:
+    if settings.mfa_totp_secret is None:
+        return None
+    return TotpVerifier(settings.mfa_totp_secret.get_secret_value(), clock)
 
 
 def build_container(settings: Settings, clock: Clock | None = None) -> Container:
@@ -131,6 +162,7 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         fast_store=RedisKillSwitchStore(redis),
         durable_store=SqlKillSwitchStore(sessions),
         nonces=RedisNonceStore(redis),
+        proposal_repo=SqlProposalRepository(sessions, clock),
         engine=engine,
         redis=redis,
     )
@@ -150,6 +182,7 @@ def build_in_memory_container(
         fast_store=RedisKillSwitchStore(redis) if redis is not None else InMemoryKillSwitchStore(),
         durable_store=None,
         nonces=InMemoryNonceStore(),
+        proposal_repo=InMemoryProposalRepository(),
         engine=None,
         redis=redis,
     )

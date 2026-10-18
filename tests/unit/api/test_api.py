@@ -6,12 +6,16 @@ import fakeredis
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import SecretStr
 
 from aqta.api import Container, build_in_memory_container, create_app
+from aqta.api.deps import MfaActor, check_mfa
 from aqta.core.clock import FrozenClock
-from aqta.core.errors import ConfigError
-from aqta.core.settings import Settings
+from aqta.core.errors import AuthError, ConfigError
+from aqta.core.settings import Settings, TradingMode
+from aqta.core.totp import STEP_SECONDS, decode_secret, hotp
 from conftest import TEST_API_TOKEN
+from factories import make_proposal
 
 AUTH = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
 
@@ -132,18 +136,222 @@ async def test_kill_switch_validation_error_shape(client: httpx.AsyncClient) -> 
     assert r.json()["request_id"].startswith("req_")
 
 
-async def test_proposals_stub(client: httpx.AsyncClient) -> None:
+async def test_proposals_empty(client: httpx.AsyncClient) -> None:
     r = await client.get("/api/v1/proposals", headers=AUTH)
     assert r.status_code == 200 and r.json() == []
 
 
-async def test_mfa_hook_fails_closed(settings: Settings, clock: FrozenClock) -> None:
-    c = build_in_memory_container(settings.model_copy(update={"mfa_required": True}), clock)
+async def test_proposal_list_and_get(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock, lots=(4, 2)))
+    body = (await client.get("/api/v1/proposals", headers=AUTH)).json()
+    assert [x["id"] for x in body] == [p.id]
+    one = (await client.get(f"/api/v1/proposals/{p.id}", headers=AUTH)).json()
+    assert one["status"] == "pending_approval" and one["sets"] == 2
+    assert one["valid_until_ist"].endswith("IST")
+    assert [leg["lots"] for leg in one["legs"]] == [4, 2]
+    assert one["label"].startswith("Proposal only")
+    r = await client.get("/api/v1/proposals?status=rejected", headers=AUTH)
+    assert r.json() == []
+    r = await client.get("/api/v1/proposals/missing", headers=AUTH)
+    assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+
+
+async def test_paper_approve_fills_legs_hedge_first(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock, lots=(2, 2)))
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "paper" and body["proposal"]["status"] == "executed"
+    assert [o["client_order_id"] for o in body["orders"]] == [
+        p.legs[1].client_order_id,
+        p.legs[0].client_order_id,
+    ]
+    assert all(o["accepted"] and o["state"] == "filled" for o in body["orders"])
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "invalid_transition"
+
+
+async def test_paper_approve_blocked_by_kill_switch(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock))
+    await container.kill_switch.trigger("kashyap", "drill")
+    body = (await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)).json()
+    assert body["proposal"]["status"] == "approved"
+    assert body["orders"][0]["accepted"] is False and body["orders"][0]["stage"] == "risk"
+    assert "blocked" in body["note"]
+
+
+async def test_approve_expired_proposal(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    p = await container.proposals.submit(make_proposal(clock))
+    clock.advance(minutes=5)
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 409 and "expired" in r.json()["error"]["message"]
+
+
+async def test_live_approve_sends_no_orders(settings: Settings, clock: FrozenClock) -> None:
+    live = settings.model_copy(
+        update={"trading_mode": TradingMode.LIVE, "live_trading_enabled": True}
+    )
+    c = build_in_memory_container(live, clock)
+    p = await c.proposals.submit(make_proposal(clock))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app(container=c)), base_url="http://t"
     ) as client:
-        r = await client.get("/api/v1/mode", headers=AUTH)
-    assert r.status_code == 401 and "MFA" in r.json()["error"]["message"]
+        body = (await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)).json()
+    assert body["mode"] == "live" and body["orders"] == []
+    assert body["proposal"]["status"] == "approved" and "Angel One" in body["note"]
+    assert c.gateway.orders == {}
+
+
+async def test_reject_and_modify(
+    client: httpx.AsyncClient, container: Container, clock: FrozenClock
+) -> None:
+    a = await container.proposals.submit(make_proposal(clock))
+    r = await client.post(
+        f"/api/v1/proposals/{a.id}/reject", headers=AUTH, json={"reason": "not convinced"}
+    )
+    assert r.status_code == 200 and r.json()["status"] == "rejected"
+    r = await client.post(f"/api/v1/proposals/{a.id}/reject", headers=AUTH, json={"reason": "x"})
+    assert r.status_code == 422
+
+    b = await container.proposals.submit(make_proposal(clock, lots=(4, 2)))
+    r = await client.post(f"/api/v1/proposals/{b.id}/modify", headers=AUTH, json={"sets": 1})
+    assert r.status_code == 200
+    smaller = r.json()
+    assert smaller["sets"] == 1 and [leg["lots"] for leg in smaller["legs"]] == [2, 1]
+    assert smaller["rationale"]["modified_from"] == b.id
+    r = await client.post(f"/api/v1/proposals/{b.id}/modify", headers=AUTH, json={"sets": 1})
+    assert r.status_code == 409  # original is cancelled
+    r = await client.post(
+        f"/api/v1/proposals/{smaller['id']}/modify", headers=AUTH, json={"sets": 1}
+    )
+    assert r.status_code == 409  # cannot keep the same size
+
+
+async def test_approve_needs_totp_when_mfa_on(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, c = mfa_client
+    p = await c.proposals.submit(make_proposal(clock))
+    r = await client.post(f"/api/v1/proposals/{p.id}/approve", headers=AUTH)
+    assert r.status_code == 401
+    assert (await c.proposals.get(p.id)).status.value == "pending_approval"
+    r = await client.post(
+        f"/api/v1/proposals/{p.id}/approve", headers={**AUTH, "X-TOTP": _code_now(clock)}
+    )
+    assert r.status_code == 200 and r.json()["proposal"]["status"] == "executed"
+
+
+MFA_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"  # test-only value
+
+
+def _code_now(clock: FrozenClock, offset_steps: int = 0) -> str:
+    counter = int(clock.now().timestamp()) // STEP_SECONDS + offset_steps
+    return hotp(decode_secret(MFA_SECRET), counter)
+
+
+@pytest.fixture
+async def mfa_client(
+    settings: Settings, clock: FrozenClock
+) -> AsyncIterator[tuple[httpx.AsyncClient, Container]]:
+    s = settings.model_copy(update={"mfa_required": True, "mfa_totp_secret": SecretStr(MFA_SECRET)})
+    c = build_in_memory_container(s, clock)
+    transport = httpx.ASGITransport(app=create_app(container=c))
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        yield client, c
+
+
+async def test_mfa_reads_need_only_the_token(
+    mfa_client: tuple[httpx.AsyncClient, Container],
+) -> None:
+    client, _ = mfa_client
+    assert (await client.get("/api/v1/mode", headers=AUTH)).status_code == 200
+
+
+async def test_mfa_trigger_stays_available_without_totp(
+    mfa_client: tuple[httpx.AsyncClient, Container],
+) -> None:
+    """FR-034: the kill switch must not be blocked by a missing code in an emergency."""
+    client, c = mfa_client
+    r = await client.post(
+        "/api/v1/kill-switch", headers=AUTH, json={"action": "trigger", "reason": "emergency"}
+    )
+    assert r.status_code == 200 and await c.kill_switch.is_active()
+
+
+@pytest.mark.parametrize("totp", [None, "000000", "12345", "abcdef"])
+async def test_mfa_release_refused_without_valid_totp(
+    mfa_client: tuple[httpx.AsyncClient, Container], totp: str | None
+) -> None:
+    client, c = mfa_client
+    await c.kill_switch.trigger("kashyap", "drill")
+    headers = AUTH if totp is None else {**AUTH, "X-TOTP": totp}
+    r = await client.post(
+        "/api/v1/kill-switch", headers=headers, json={"action": "release", "reason": "done"}
+    )
+    assert r.status_code == 401 and "TOTP" in r.json()["error"]["message"]
+    assert await c.kill_switch.is_active()
+
+
+async def test_mfa_release_with_valid_totp_then_replay_refused(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, c = mfa_client
+    await c.kill_switch.trigger("kashyap", "drill")
+    headers = {**AUTH, "X-TOTP": _code_now(clock)}
+    body = {"action": "release", "reason": "drill over"}
+    r = await client.post("/api/v1/kill-switch", headers=headers, json=body)
+    assert r.status_code == 200 and r.json()["active"] is False
+
+    await c.kill_switch.trigger("kashyap", "drill 2")
+    r = await client.post("/api/v1/kill-switch", headers=headers, json=body)
+    assert r.status_code == 401  # same code cannot be used twice
+    clock.advance(seconds=STEP_SECONDS)
+    r = await client.post(
+        "/api/v1/kill-switch", headers={**AUTH, "X-TOTP": _code_now(clock)}, json=body
+    )
+    assert r.status_code == 200
+
+
+async def test_mfa_code_is_not_consumed_by_a_bad_token(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, c = mfa_client
+    await c.kill_switch.trigger("kashyap", "drill")
+    code = _code_now(clock)
+    body = {"action": "release", "reason": "done"}
+    bad = {"Authorization": "Bearer wrong", "X-TOTP": code}
+    assert (await client.post("/api/v1/kill-switch", headers=bad, json=body)).status_code == 401
+    good = {**AUTH, "X-TOTP": code}
+    assert (await client.post("/api/v1/kill-switch", headers=good, json=body)).status_code == 200
+
+
+async def test_mfa_fails_closed_without_verifier(container: Container) -> None:
+    container.settings = container.settings.model_copy(update={"mfa_required": True})
+    with pytest.raises(AuthError, match="no TOTP secret"):
+        check_mfa(container, "123456")
+
+
+async def test_require_mfa_dependency(
+    mfa_client: tuple[httpx.AsyncClient, Container], clock: FrozenClock
+) -> None:
+    client, _ = mfa_client
+    app = client._transport.app  # type: ignore[attr-defined]
+
+    @app.post("/sensitive")
+    async def sensitive(actor: MfaActor) -> dict[str, str]:
+        return {"actor": actor}
+
+    assert (await client.post("/sensitive", headers=AUTH)).status_code == 401
+    r = await client.post("/sensitive", headers={**AUTH, "X-TOTP": _code_now(clock)})
+    assert r.status_code == 200 and r.json() == {"actor": "kashyap"}
 
 
 async def test_no_configured_token_refuses_everything(

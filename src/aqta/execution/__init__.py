@@ -8,6 +8,7 @@ Public API:
 Never imports signals, forecasting, astrology or analysis (RULE-013).
 """
 
+from aqta.execution.approved import execute_paper, leg_order
 from aqta.execution.gateway import (
     ManagedOrder,
     OrderGateway,
@@ -49,7 +50,9 @@ __all__ = [
     "ReconciliationReport",
     "Stage",
     "ZeroCost",
+    "execute_paper",
     "is_open",
+    "leg_order",
     "next_state",
     "select_broker",
 ]

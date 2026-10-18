@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+from functools import reduce
+from math import gcd
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from aqta.audit import AuditSink
 from aqta.core.clock import Clock
 from aqta.core.errors import InvalidTransitionError
+from aqta.core.settings import ProposalSettings
 from aqta.core.trading import OrderRequest
 from aqta.proposals.tokens import ApprovalTokenService
 
@@ -69,6 +72,64 @@ class Proposal(BaseModel):
     # TODO(FR-010, FR-043): top contributing signals, evidence links, rationale pack reference.
     rationale: dict[str, Any] = Field(default_factory=dict)
     label: str = "Proposal only - not an order (FR-016)"
+
+    @property
+    def sets(self) -> int:
+        """How many copies of the smallest whole structure the legs hold (gcd of leg lots).
+
+        Two legs of 4 and 2 lots are 2 sets of (2, 1). Modify may only lower this number, so
+        every leg shrinks by the same ratio and hedges stay intact.
+        """
+        return reduce(gcd, (leg.lots for leg in self.legs))
+
+
+def validity_seconds(horizon: Horizon, settings: ProposalSettings) -> int:
+    """FR-023 approval window for a horizon (5 / 30 / 60 minutes by default)."""
+    return {
+        Horizon.INTRADAY: settings.intraday_seconds,
+        Horizon.SWING: settings.swing_seconds,
+        Horizon.POSITIONAL: settings.positional_seconds,
+    }[horizon]
+
+
+def _scale(value: Decimal | None, new_sets: int, sets: int) -> Decimal | None:
+    return None if value is None else (value * new_sets / sets).quantize(Decimal("0.01"))
+
+
+def resized(proposal: Proposal, new_sets: int, new_id: str, now: datetime) -> Proposal:
+    """A smaller copy of ``proposal`` (reduce-size-only modify, FR-023).
+
+    Quantities, per-leg maximum loss and margin scale by ``new_sets / sets``; return on margin is
+    unchanged. The copy keeps the original validity window and gets fresh client order ids.
+    """
+    sets = proposal.sets
+    if not 1 <= new_sets < sets:
+        raise InvalidTransitionError(
+            f"proposal {proposal.id}: size can only be reduced, to between 1 and {sets - 1} sets"
+        )
+    legs = tuple(
+        leg.model_copy(
+            update={
+                "client_order_id": f"{new_id}_l{i}",
+                "proposal_id": new_id,
+                "quantity": leg.quantity * new_sets // sets,
+                "max_loss_inr": _scale(leg.max_loss_inr, new_sets, sets),
+                "margin_required_inr": _scale(leg.margin_required_inr, new_sets, sets),
+            }
+        )
+        for i, leg in enumerate(proposal.legs, start=1)
+    )
+    return proposal.model_copy(
+        update={
+            "id": new_id,
+            "created_at": now,
+            "legs": legs,
+            "max_loss_inr": _scale(proposal.max_loss_inr, new_sets, sets),
+            "margin_required_inr": _scale(proposal.margin_required_inr, new_sets, sets),
+            "status": ProposalStatus.PENDING_APPROVAL,
+            "rationale": {**proposal.rationale, "modified_from": proposal.id},
+        }
+    )
 
 
 def transition(proposal: Proposal, to: ProposalStatus) -> Proposal:

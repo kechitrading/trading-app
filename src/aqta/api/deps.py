@@ -1,11 +1,11 @@
-"""FastAPI dependencies: container access, API-token auth and the MFA (TOTP) hook."""
+"""FastAPI dependencies: container access, API-token auth and TOTP checks (NFR-009, FR-052)."""
 
 from __future__ import annotations
 
 import hmac
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from aqta.api.container import Container
@@ -22,11 +22,15 @@ def get_container(request: Request) -> Container:
 ContainerDep = Annotated[Container, Depends(get_container)]
 
 
-async def verify_mfa(request: Request, container: ContainerDep) -> None:
-    """Placeholder for TOTP (NFR-009, FR-052). Fails closed when MFA is required."""
-    if container.settings.mfa_required:
-        # TODO(NFR-009): verify an `X-TOTP` code against the user's TOTP secret (pyotp).
-        raise AuthError("MFA is required but TOTP verification is not implemented yet")
+def check_mfa(container: Container, code: str | None) -> None:
+    """NFR-009, FR-052: a fresh TOTP code is needed for sensitive actions (approving orders,
+    loosening controls). Fails closed: MFA required but no verifier means refuse."""
+    if not container.settings.mfa_required:
+        return
+    if container.mfa is None:
+        raise AuthError("MFA is required but no TOTP secret is configured")
+    if not container.mfa.verify(code):
+        raise AuthError("invalid, reused or missing TOTP code (send it in the X-TOTP header)")
 
 
 async def require_api_token(
@@ -44,3 +48,15 @@ async def require_api_token(
 
 
 Actor = Annotated[str, Depends(require_api_token)]
+
+TotpHeader = Annotated[str | None, Header(alias="X-TOTP")]
+
+
+async def require_mfa(container: ContainerDep, actor: Actor, totp: TotpHeader = None) -> str:
+    """Token first, then TOTP, so unauthenticated calls cannot use up a code."""
+    check_mfa(container, totp)
+    return actor
+
+
+MfaActor = Annotated[str, Depends(require_mfa)]
+"""Use on routes that approve orders or change limits (FR-052)."""

@@ -4,7 +4,7 @@ Safety rules encoded here (see CLAUDE.md):
 - ``TRADING_MODE`` defaults to ``paper``. ``live`` additionally requires
   ``LIVE_TRADING_ENABLED=true`` or the settings refuse to load (RULE-001, FR-030).
 - Astrology defaults to shadow mode with weight 0 (RULE-014).
-- Risk defaults follow RULE-002 / RULE-003 / ASM-004 (to be confirmed under Q-004).
+- Risk defaults follow RULE-002 / RULE-003 / ASM-004 (confirmed 2026-10-18, BRD D-012).
 - Secrets are ``SecretStr`` so they never render in logs or reprs (NFR-008).
 """
 
@@ -76,6 +76,14 @@ class AstrologySettings(BaseModel):
     gate_min_hit_rate: float = 0.60
 
 
+class ProposalSettings(BaseModel):
+    """How long a proposal stays open for approval, per horizon (FR-023; decided 2026-10-18)."""
+
+    intraday_seconds: int = Field(default=300, gt=0)  # BRD default: 5 minutes
+    swing_seconds: int = Field(default=1800, gt=0)
+    positional_seconds: int = Field(default=3600, gt=0)
+
+
 class MarketSessionSettings(BaseModel):
     """Session times in IST. MCX close varies with US DST, hence configurable."""
 
@@ -119,7 +127,10 @@ class Settings(BaseSettings):
     # --- API
     api_token: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=list)
-    mfa_required: bool = False  # TODO(NFR-009, FR-052): enforce TOTP before paper start.
+    # NFR-009, FR-052: TOTP on sensitive actions. Always on in prod; the secret comes from
+    # scripts/mfa_setup.py and is added to your authenticator app.
+    mfa_required: bool = False
+    mfa_totp_secret: SecretStr | None = None
     # /docs and /openapi.json are always on outside prod; in prod only when explicitly enabled
     # (the API is reachable only through nginx from allowlisted IPs).
     docs_enabled: bool = False
@@ -131,11 +142,30 @@ class Settings(BaseSettings):
     # --- Telegram (FR-052)
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_user_id: int | None = None
+    # Only one process may poll a bot token. Turn off on a dev machine while prod runs the bot.
+    telegram_polling: bool = True
+
+    # --- Broker: Angel One SmartAPI (Q-005 closed 2026-10-18). Credentials only; no live-order
+    # adapter exists yet (CLAUDE.md safety rule 2). Login needs client code + MPIN + TOTP (FR-029).
+    angel_one_api_key: SecretStr | None = None
+    angel_one_client_code: str | None = None
+    angel_one_mpin: SecretStr | None = None
+    angel_one_totp_secret: SecretStr | None = None
+
+    # --- AI: Anthropic Claude (Q-010 closed 2026-10-18), within BUDGET__AI_MONTHLY_INR.
+    anthropic_api_key: SecretStr | None = None
+    llm_model: str = "claude-opus-5-5"  # reports, deep dives, advice (FR-016, FR-040)
+    llm_model_routine: str = "claude-opus-5-5"  # summaries, sentiment tagging (FR-006, FR-044)
+
+    # --- News and global macro: Finnhub (Q-001 closed 2026-10-18; Indian prices come from the
+    # broker and exchange files, ASM-001).
+    finnhub_api_key: SecretStr | None = None
 
     risk: RiskSettings = Field(default_factory=RiskSettings)
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
     astrology: AstrologySettings = Field(default_factory=AstrologySettings)
     sessions: MarketSessionSettings = Field(default_factory=MarketSessionSettings)
+    proposals: ProposalSettings = Field(default_factory=ProposalSettings)
 
     @model_validator(mode="after")
     def _enforce_safety(self) -> Settings:
@@ -153,6 +183,16 @@ class Settings(BaseSettings):
                 )
             if self.api_token is None:
                 raise ConfigError("API_TOKEN must be set in prod.")
+            if not self.mfa_required:
+                raise ConfigError("MFA_REQUIRED must be true in prod (NFR-009).")
+        if self.mfa_required:
+            from aqta.core.totp import decode_secret  # local import keeps settings light
+
+            if self.mfa_totp_secret is None:
+                raise ConfigError(
+                    "MFA_REQUIRED=true needs MFA_TOTP_SECRET (run scripts/mfa_setup.py)."
+                )
+            decode_secret(self.mfa_totp_secret.get_secret_value())
         return self
 
     @property

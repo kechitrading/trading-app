@@ -25,9 +25,17 @@ Values to note down as you go (none of them are secrets): **AWS account ID**, **
      "REDIS_URL": "redis://redis:6379/0",
      "POSTGRES_PASSWORD": "<POSTGRES_PASSWORD>",
      "API_TOKEN": "<API_TOKEN>",
+     "MFA_REQUIRED": "true",
+     "MFA_TOTP_SECRET": "<from scripts/mfa_setup.py>",
      "APPROVAL_SECRET": "<APPROVAL_SECRET>",
      "TELEGRAM_BOT_TOKEN": "",
-     "TELEGRAM_ALLOWED_USER_ID": ""
+     "TELEGRAM_ALLOWED_USER_ID": "",
+     "ANGEL_ONE_API_KEY": "",
+     "ANGEL_ONE_CLIENT_CODE": "",
+     "ANGEL_ONE_MPIN": "",
+     "ANGEL_ONE_TOTP_SECRET": "",
+     "ANTHROPIC_API_KEY": "",
+     "FINNHUB_API_KEY": ""
    }
    ```
    The same `POSTGRES_PASSWORD` value goes in two places. Keep the host `postgres` and the whole
@@ -159,7 +167,7 @@ for 23:50 IST).
   Advanced -> Proceed. If your home IP changes, update the security group rule to the new "My IP".
 - **Remote API access with a domain**: nginx + Let's Encrypt (`deploy/nginx/aqta.conf.example`).
 - **Backups**: nightly `pg_dump` to S3; audit rows are kept for 5 years (NFR-011).
-- **Broker**: register the Elastic IP with the chosen broker (Q-005, REG-001).
+- **Broker**: register the Elastic IP on your Angel One SmartAPI app (Q-005, REG-001).
 
 ## Troubleshooting
 
