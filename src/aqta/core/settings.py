@@ -157,17 +157,32 @@ class Settings(BaseSettings):
         return self.trading_mode is TradingMode.PAPER
 
 
+class SecretsLocation(BaseSettings):
+    """Only where secrets come from. Read first, so that the full ``Settings`` (and its prod
+    checks) is validated once, after the secret store's values have been merged in."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True
+    )
+
+    secrets_provider: Literal["env", "aws"] = "env"
+    aws_region: str = "ap-south-1"
+    aws_secret_id: str | None = None
+
+
+_LOCATION_KEYS = ("_env_file", "secrets_provider", "aws_region", "aws_secret_id")
+
+
 def load_settings(**overrides: Any) -> Settings:
-    """Build settings from env/.env, then overlay secrets from the configured provider."""
+    """Build settings from env/.env plus values from the configured secret store.
+
+    Precedence: explicit overrides > secret store > environment / .env.
+    """
     from aqta.core.secrets import build_secrets_provider  # local import avoids a cycle
 
-    base = Settings(**overrides)
-    provider = build_secrets_provider(base)
-    secret_values = provider.load()
-    if not secret_values:
-        return base
-    merged = {**secret_values, **overrides}
-    return Settings(**merged)
+    location = SecretsLocation(**{k: v for k, v in overrides.items() if k in _LOCATION_KEYS})
+    secret_values = build_secrets_provider(location).load()
+    return Settings(**{**secret_values, **overrides})
 
 
 @lru_cache(maxsize=1)

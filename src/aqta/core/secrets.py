@@ -8,12 +8,22 @@ setting names (e.g. ``{"API_TOKEN": "...", "APPROVAL_SECRET": "..."}``).
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from aqta.core.errors import ConfigError
 
-if TYPE_CHECKING:
-    from aqta.core.settings import Settings
+
+class SecretsLocator(Protocol):
+    """Anything that says where secrets live (``Settings`` or ``SecretsLocation``)."""
+
+    @property
+    def secrets_provider(self) -> str: ...
+
+    @property
+    def aws_region(self) -> str: ...
+
+    @property
+    def aws_secret_id(self) -> str | None: ...
 
 
 class SecretsProvider(Protocol):
@@ -55,7 +65,7 @@ class AwsSecretsManagerProvider:
         return {str(k).lower(): v for k, v in data.items()}
 
 
-def build_secrets_provider(settings: Settings) -> SecretsProvider:
+def build_secrets_provider(settings: SecretsLocator) -> SecretsProvider:
     if settings.secrets_provider == "aws":
         if not settings.aws_secret_id:
             raise ConfigError("AWS_SECRET_ID is required when SECRETS_PROVIDER=aws")

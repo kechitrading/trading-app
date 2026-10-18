@@ -118,3 +118,41 @@ def test_load_settings_overlays_provider(monkeypatch: pytest.MonkeyPatch) -> Non
     s = load_settings(_env_file=None)
     assert isinstance(s.api_token, SecretStr)
     assert s.api_token.get_secret_value() == "overlaid"
+
+
+def test_prod_secrets_from_aws_are_applied_before_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: on the server only APP_ENV, SECRETS_PROVIDER and AWS_SECRET_ID are in the env;
+    the other secrets live in Secrets Manager. Prod checks must see the merged values."""
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("SECRETS_PROVIDER", "aws")
+    monkeypatch.setenv("AWS_SECRET_ID", "aqta/prod")
+    secret = json.dumps(
+        {
+            "API_TOKEN": "t" * 43,
+            "APPROVAL_SECRET": "s" * 43,
+            "DATABASE_URL": "postgresql+asyncpg://aqta:pw@postgres:5432/aqta",
+        }
+    )
+    monkeypatch.setattr(
+        "aqta.core.secrets.AwsSecretsManagerProvider._get_client", lambda self: _FakeSM(secret)
+    )
+    s = load_settings(_env_file=None)
+    assert s.app_env == "prod"
+    assert s.approval_secret.get_secret_value() == "s" * 43
+    assert s.database_url.get_secret_value().endswith("@postgres:5432/aqta")
+
+
+def test_prod_still_refuses_when_secret_lacks_approval_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("SECRETS_PROVIDER", "aws")
+    monkeypatch.setenv("AWS_SECRET_ID", "aqta/prod")
+    monkeypatch.setattr(
+        "aqta.core.secrets.AwsSecretsManagerProvider._get_client",
+        lambda self: _FakeSM(json.dumps({"API_TOKEN": "t" * 43})),
+    )
+    with pytest.raises(ValidationError, match="APPROVAL_SECRET"):
+        load_settings(_env_file=None)
