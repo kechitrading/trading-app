@@ -79,9 +79,8 @@ fi
 cat <<EOF
 
 Done. Next steps:
-  1. Log out and back in (so the docker group applies), then run:
-       docker login ghcr.io -u <your-github-username>
-     and paste a GitHub token with only the read:packages scope.
+  1. Log out and back in (so the docker group applies). Image pulls need no manual login:
+     each deploy logs in to ghcr.io with a short-lived GitHub token.
   2. Make sure the GitHub deploy public key is in ~/.ssh/authorized_keys.
   3. Merge to main (outside 08:30-23:45 IST on weekdays) or run Actions -> Deploy manually.
 EOF

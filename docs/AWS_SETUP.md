@@ -105,14 +105,9 @@ Values to note down as you go (none of them are secrets): **AWS account ID**, **
     ```bash
     echo "<paste the line from aqta_deploy.pub>" >> ~/.ssh/authorized_keys
     ```
-15. Create a GitHub token so the server can pull images: GitHub -> your avatar -> **Settings** ->
-    **Developer settings** -> **Personal access tokens** -> **Tokens (classic)** ->
-    **Generate new token (classic)**. Name it `aqta-ghcr-pull`, give it **only** the
-    `read:packages` scope, set an expiry, and generate it. Then on the server:
-    ```bash
-    docker login ghcr.io -u kechitrading
-    ```
-    Paste the token when asked for a password. It is stored in `~/.docker/config.json` on the server only.
+15. Nothing to do for image access: each deploy logs the server in to GitHub's registry with a
+    short-lived token and logs out afterwards. (If you ever pull images by hand on the server, use
+    `docker login ghcr.io` with a token that has only `read:packages`.)
 
 ## Part F: GitHub settings
 
@@ -168,7 +163,7 @@ for 23:50 IST).
 | Deploy run says "DEPLOY_HOST secret not set yet" | Step 16 not done |
 | "Deploys are blocked 08:30-23:45 IST" | Manual run inside trading hours; wait, or use force with a reason |
 | `ssh: handshake failed` / timeout | Security group (step 20) or wrong `DEPLOY_SSH_KEY` (must be the private key) |
-| `denied` / `unauthorized` when pulling the image | Step 15 not done, or the token lacks `read:packages` |
+| `denied` / `unauthorized` when pulling the image | Re-run the Deploy workflow (the per-deploy registry login failed), or check the image exists under the repo's Packages |
 | `/run/aqta missing or not writable` | Step 12 not run (or run as root) |
 | `AccessDeniedException` from Secrets Manager | Role not attached (step 9) or wrong account ID / region in the policy (step 6) |
 | `/ready` reports database or redis down | `docker compose -f compose.prod.yml logs postgres redis` on the server |
