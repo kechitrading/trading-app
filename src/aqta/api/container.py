@@ -19,7 +19,14 @@ from aqta.core.errors import ConfigError
 from aqta.core.settings import AppEnv, Settings
 from aqta.core.totp import TotpVerifier
 from aqta.execution import OrderGateway, select_broker
-from aqta.notifications import NotifierPort, build_notifier
+from aqta.notifications import (
+    FakeProposalPublisher,
+    NotifierPort,
+    TelegramProposalPublisher,
+    build_bot,
+    build_notifier,
+    build_publisher,
+)
 from aqta.proposals import (
     ApprovalService,
     ApprovalTokenService,
@@ -57,9 +64,11 @@ class Container:
     gateway: OrderGateway
     proposals: ProposalService
     notifier: NotifierPort
+    publisher: TelegramProposalPublisher | FakeProposalPublisher
     engine: AsyncEngine | None = None
     redis: Any | None = None
     mfa: TotpVerifier | None = None  # NFR-009; set when MFA_TOTP_SECRET is configured
+    telegram_bot: Any | None = None  # polled by the API process (see aqta.api.app)
 
     async def check_ready(self) -> dict[str, str]:
         checks: dict[str, str] = {}
@@ -77,6 +86,8 @@ class Container:
         return self.redis is not None and await ping_redis(self.redis)
 
     async def close(self) -> None:
+        if self.telegram_bot is not None:
+            await self.telegram_bot.session.close()
         if self.redis is not None:
             await self.redis.aclose()
         if self.engine is not None:
@@ -108,6 +119,10 @@ def _wire(
     gateway = OrderGateway(settings, select_broker(settings), tokens, risk, audit, clock)
     kill_switch.register_on_trigger(gateway.on_kill_switch)
     approvals = ApprovalService(tokens, audit, clock)
+    proposals = ProposalService(proposal_repo, approvals, tokens, audit, clock)
+    bot = build_bot(settings)
+    publisher = build_publisher(settings, bot)
+    proposals.on_new_pending(publisher.publish)  # FR-023: every open proposal goes to Telegram
     return Container(
         settings=settings,
         clock=clock,
@@ -118,8 +133,10 @@ def _wire(
         tokens=tokens,
         approvals=approvals,
         gateway=gateway,
-        proposals=ProposalService(proposal_repo, approvals, tokens, audit, clock),
-        notifier=build_notifier(settings),
+        proposals=proposals,
+        notifier=build_notifier(settings, bot),
+        publisher=publisher,
+        telegram_bot=bot,
         engine=engine,
         redis=redis,
         mfa=_build_mfa(settings, clock),

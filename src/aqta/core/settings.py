@@ -142,6 +142,8 @@ class Settings(BaseSettings):
     # --- Telegram (FR-052)
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_user_id: int | None = None
+    # Only one process may poll a bot token. Turn off on a dev machine while prod runs the bot.
+    telegram_polling: bool = True
 
     # --- Broker: Angel One SmartAPI (Q-005 closed 2026-10-18). Credentials only; no live-order
     # adapter exists yet (CLAUDE.md safety rule 2). Login needs client code + MPIN + TOTP (FR-029).

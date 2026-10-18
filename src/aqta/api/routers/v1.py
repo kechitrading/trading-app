@@ -10,9 +10,9 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from aqta.api.actions import approve_and_execute
 from aqta.api.deps import Actor, ContainerDep, MfaActor, TotpHeader, check_mfa
 from aqta.core.timeutil import format_ist
-from aqta.execution import execute_paper
 from aqta.proposals import Proposal, ProposalStatus
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
@@ -186,21 +186,10 @@ async def approve_proposal(
     """FR-023, FR-024, FR-052 (needs X-TOTP). Paper mode fills each leg on the paper broker
     through the order gateway, risk-reducing legs first (FR-025, FR-030). Live mode sends nothing
     (CR-003): the proposal is approved and the order ticket comes from FR-077."""
-    proposal, tokens = await container.proposals.approve(proposal_id, actor, "api")
-    if not container.settings.is_paper:
-        return ApproveOut(
-            proposal=ProposalOut.of(proposal),
-            mode="live",
-            orders=[],
-            note="Approved. Place the orders in the Angel One app (manual execution, CR-003).",
-        )
-    results = await execute_paper(container.gateway, proposal.legs, tokens)
-    all_done = len(results) == len(proposal.legs) and all(r.accepted for r in results)
-    if all_done:
-        proposal = await container.proposals.mark_executed(proposal_id, actor)
+    result = await approve_and_execute(container, proposal_id, actor, "api")
     return ApproveOut(
-        proposal=ProposalOut.of(proposal),
-        mode="paper",
+        proposal=ProposalOut.of(result.proposal),
+        mode=result.mode,
         orders=[
             LegResultOut(
                 client_order_id=r.client_order_id,
@@ -209,9 +198,9 @@ async def approve_proposal(
                 reasons=list(r.reasons),
                 state=None if r.state is None else r.state.value,
             )
-            for r in results
+            for r in result.orders
         ],
-        note="Paper orders filled." if all_done else "Stopped at a blocked leg; see reasons.",
+        note=result.note,
     )
 
 

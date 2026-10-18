@@ -5,7 +5,7 @@ import pytest
 from aqta.audit import InMemoryAuditLog
 from aqta.core.clock import FrozenClock
 from aqta.core.errors import SafetyViolationError
-from aqta.core.settings import Settings
+from aqta.core.settings import Settings, TradingMode
 from aqta.core.trading import RiskEffect
 from aqta.execution import (
     LiveBrokerStub,
@@ -61,7 +61,9 @@ async def test_paper_execution_stops_at_first_blocked_leg(
 
 
 async def test_refuses_live_mode(settings: Settings, clock: FrozenClock) -> None:
-    live = settings.model_copy(update={"trading_mode": "live", "live_trading_enabled": True})
+    live = settings.model_copy(
+        update={"trading_mode": TradingMode.LIVE, "live_trading_enabled": True}
+    )
     tokens = ApprovalTokenService(TEST_APPROVAL_SECRET, clock, InMemoryNonceStore())
     gw = OrderGateway(
         live, LiveBrokerStub(), tokens, RiskRig(clock).engine, InMemoryAuditLog(clock), clock

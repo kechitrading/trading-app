@@ -12,7 +12,7 @@ from aqta.api import Container, build_in_memory_container, create_app
 from aqta.api.deps import MfaActor, check_mfa
 from aqta.core.clock import FrozenClock
 from aqta.core.errors import AuthError, ConfigError
-from aqta.core.settings import Settings
+from aqta.core.settings import Settings, TradingMode
 from aqta.core.totp import STEP_SECONDS, decode_secret, hotp
 from conftest import TEST_API_TOKEN
 from factories import make_proposal
@@ -196,7 +196,9 @@ async def test_approve_expired_proposal(
 
 
 async def test_live_approve_sends_no_orders(settings: Settings, clock: FrozenClock) -> None:
-    live = settings.model_copy(update={"trading_mode": "live", "live_trading_enabled": True})
+    live = settings.model_copy(
+        update={"trading_mode": TradingMode.LIVE, "live_trading_enabled": True}
+    )
     c = build_in_memory_container(live, clock)
     p = await c.proposals.submit(make_proposal(clock))
     async with httpx.AsyncClient(

@@ -7,7 +7,7 @@ order ticket in live manual mode (CR-003, RULE-016).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -16,6 +16,7 @@ from aqta.audit import AuditSink
 from aqta.core.clock import Clock
 from aqta.core.errors import InvalidTransitionError, NotFoundError
 from aqta.core.ids import new_id
+from aqta.core.logs import get_logger
 from aqta.proposals.lifecycle import (
     ApprovalService,
     Proposal,
@@ -24,6 +25,9 @@ from aqta.proposals.lifecycle import (
     transition,
 )
 from aqta.proposals.tokens import ApprovalTokenService
+
+log = get_logger(__name__)
+ProposalListener = Callable[[Proposal], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +101,19 @@ class ProposalService:
         self._tokens = tokens
         self._audit = audit
         self._clock = clock
+        self._listeners: list[ProposalListener] = []
+
+    def on_new_pending(self, listener: ProposalListener) -> None:
+        """Called for every proposal that opens for approval (new or a smaller copy), e.g. to
+        send it to Telegram. Listener failures are logged and never undo the proposal."""
+        self._listeners.append(listener)
+
+    async def _announce(self, proposal: Proposal) -> None:
+        for listener in self._listeners:
+            try:
+                await listener(proposal)
+            except Exception as exc:
+                log.error("proposal.announce_failed", proposal_id=proposal.id, error=str(exc))
 
     async def submit(self, proposal: Proposal, actor: str = "system") -> Proposal:
         """Store a new proposal and open it for approval."""
@@ -111,6 +128,7 @@ class ProposalService:
             {"proposal_id": pending.id, "valid_until": pending.valid_until.isoformat()},
             actor,
         )
+        await self._announce(pending)
         return pending
 
     async def get(self, proposal_id: str) -> Proposal:
@@ -185,6 +203,7 @@ class ProposalService:
             },
             actor,
         )
+        await self._announce(smaller)
         return smaller
 
     async def mark_executed(self, proposal_id: str, actor: str = "system") -> Proposal:
