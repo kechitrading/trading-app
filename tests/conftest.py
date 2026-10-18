@@ -15,9 +15,15 @@ TEST_APPROVAL_SECRET = "test-approval-secret-0123456789abcdef-xyz"
 
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Never let a developer's real environment leak into tests."""
+    """Never let a developer's or CI's real environment leak into tests.
+
+    Removes every variable ``Settings`` would read (e.g. API_TOKEN, APPROVAL_SECRET, DATABASE_URL
+    exported by CI), including nested ones such as RISK__MAX_OPEN_ORDERS.
+    """
+    fields = {name.upper() for name in Settings.model_fields}
     for key in list(os.environ):
-        if key.startswith(("TRADING_", "LIVE_", "RISK__", "ASTROLOGY__", "TELEGRAM_", "APPROVAL_")):
+        upper = key.upper()
+        if upper in fields or upper.split("__", 1)[0] in fields:
             monkeypatch.delenv(key, raising=False)
 
 
