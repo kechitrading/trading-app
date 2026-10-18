@@ -21,6 +21,7 @@ log = get_logger(__name__)
 def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
     settings = settings or (container.settings if container else get_settings())
     configure_logging(settings.log_level, json=settings.log_json)
+    show_docs = settings.app_env != "prod" or settings.docs_enabled
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -43,9 +44,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         title="AQTA - AI Quant Trading Assistant",
         version="0.1.0",
         lifespan=lifespan,
-        docs_url=None if settings.app_env == "prod" else "/docs",
+        docs_url="/docs" if show_docs else None,
         redoc_url=None,
-        openapi_url=None if settings.app_env == "prod" else "/openapi.json",
+        openapi_url="/openapi.json" if show_docs else None,
     )
     if container is not None:
         app.state.container = container  # available before lifespan for test clients

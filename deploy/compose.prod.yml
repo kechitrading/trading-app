@@ -17,6 +17,8 @@ x-app: &app
     AWS_REGION: ap-south-1
     AWS_SECRET_ID: ${AWS_SECRET_ID:-aqta/prod}
     LOG_JSON: "true"
+    # API docs at https://<ip>/docs; reachable only via nginx from IPs allowed in the security group.
+    DOCS_ENABLED: "true"
   restart: unless-stopped
   read_only: true
   tmpfs: [/tmp]

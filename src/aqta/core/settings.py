@@ -120,6 +120,9 @@ class Settings(BaseSettings):
     api_token: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=list)
     mfa_required: bool = False  # TODO(NFR-009, FR-052): enforce TOTP before paper start.
+    # /docs and /openapi.json are always on outside prod; in prod only when explicitly enabled
+    # (the API is reachable only through nginx from allowlisted IPs).
+    docs_enabled: bool = False
 
     # --- approvals (RULE-001, FR-023, FR-024)
     approval_secret: SecretStr = SecretStr("")

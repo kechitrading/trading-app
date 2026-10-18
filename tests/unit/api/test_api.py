@@ -189,3 +189,22 @@ def test_container_requires_approval_secret(settings: Settings) -> None:
 
     with pytest.raises(ConfigError, match="APPROVAL_SECRET"):
         build_in_memory_container(settings.model_copy(update={"approval_secret": SecretStr("")}))
+
+
+@pytest.mark.parametrize(
+    ("env", "enabled", "expected"),
+    [
+        ("test", False, 200),
+        ("prod", False, 404),
+        ("prod", True, 200),
+    ],
+)
+async def test_docs_visibility(
+    settings: Settings, clock: FrozenClock, env: str, enabled: bool, expected: int
+) -> None:
+    s = settings.model_copy(update={"app_env": env, "docs_enabled": enabled})
+    c = build_in_memory_container(settings, clock)
+    app = create_app(settings=s, container=c)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as cl:
+        assert (await cl.get("/docs")).status_code == expected
+        assert (await cl.get("/openapi.json")).status_code == expected

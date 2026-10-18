@@ -152,7 +152,12 @@ for 23:50 IST).
 - **Telegram**: put the bot token and your numeric user ID into the `aqta/prod` secret, then
   restart the app on the server so it reloads the secret:
   `cd /opt/aqta && FORCE_REDEPLOY=1 ./deploy.sh "$(cat .deployed_tag)"`
-- **Remote API access**: nginx + TLS on 443 (`deploy/nginx/aqta.conf.example`), with your own IPs only.
+- **Browser access by IP (no domain)**: run `bash setup-nginx-ip.sh <ELASTIC_IP>` on the server
+  (from `deploy/scripts/`). It installs nginx with a self-signed HTTPS certificate for the IP. In the
+  security group, allow **HTTPS (443) from My IP only**. Then open `https://<ELASTIC_IP>/health` or
+  `/docs`. The browser warns once ("not private") because the certificate is self-signed; choose
+  Advanced -> Proceed. If your home IP changes, update the security group rule to the new "My IP".
+- **Remote API access with a domain**: nginx + Let's Encrypt (`deploy/nginx/aqta.conf.example`).
 - **Backups**: nightly `pg_dump` to S3; audit rows are kept for 5 years (NFR-011).
 - **Broker**: register the Elastic IP with the chosen broker (Q-005, REG-001).
 
